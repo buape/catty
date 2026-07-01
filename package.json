@@ -1,0 +1,30 @@
+{
+	"name": "catty",
+	"version": "0.1.0",
+	"type": "module",
+	"private": true,
+	"bin": {
+		"catty": "./dist/catty"
+	},
+	"scripts": {
+		"start": "bun run src/index.ts",
+		"typecheck": "tsc --noEmit",
+		"lint": "biome check .",
+		"format": "biome check --write .",
+		"build": "bun build src/index.ts --target bun --outdir dist",
+		"build:binary": "bun build src/index.ts --compile --outfile dist/catty",
+		"release:darwin-arm64": "bun build src/index.ts --compile --target bun-darwin-arm64 --outfile dist/catty-darwin-arm64",
+		"release:darwin-x64": "bun build src/index.ts --compile --target bun-darwin-x64 --outfile dist/catty-darwin-x64",
+		"release:linux-x64": "bun build src/index.ts --compile --target bun-linux-x64 --outfile dist/catty-linux-x64",
+		"release": "bun run release:darwin-arm64 && bun run release:darwin-x64 && bun run release:linux-x64"
+	},
+	"dependencies": {
+		"@buape/carbon": "0.16.0",
+		"@earendil-works/pi-coding-agent": "0.80.3"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.2",
+		"@types/bun": "^1.3.14",
+		"typescript": "^6.0.3"
+	}
+}

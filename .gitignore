@@ -1,0 +1,12 @@
+node_modules
+bun.lockb
+dist
+logs
+*.log
+.DS_Store
+.env
+.env.*
+/catty.config.json
+/catty.config.toml
+/config.toml
+.pi/goals

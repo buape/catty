@@ -1,0 +1,62 @@
+{
+	"$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+	"files": {
+		"ignoreUnknown": true,
+		"includes": ["**", "!src/styles/animations.css"]
+	},
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"defaultBranch": "main",
+		"useIgnoreFile": true
+	},
+	"formatter": {
+		"formatWithErrors": true,
+		"indentStyle": "tab",
+		"indentWidth": 4
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"preset": "recommended",
+			"correctness": {
+				"noUnusedVariables": {
+					"level": "error",
+					"options": {
+						"ignoreRestSiblings": true
+					}
+				},
+				"noConstAssign": "error",
+				"noUndeclaredVariables": "error",
+				"noUnusedImports": "error"
+			},
+			"a11y": {
+				"noSvgWithoutTitle": "off",
+				"noAmbiguousAnchorText": "off"
+			},
+			"style": {
+				"noUnusedTemplateLiteral": "off",
+				"noParameterAssign": "off",
+				"noNonNullAssertion": "off"
+			},
+			"suspicious": {
+				"noAssignInExpressions": "off",
+				"noArrayIndexKey": "off"
+			}
+		}
+	},
+	"javascript": {
+		"formatter": {
+			"semicolons": "asNeeded",
+			"trailingCommas": "none",
+			"indentStyle": "tab",
+			"indentWidth": 4
+		},
+		"globals": ["Bun"]
+	},
+	"css": {
+		"parser": {
+			"tailwindDirectives": true
+		}
+	}
+}

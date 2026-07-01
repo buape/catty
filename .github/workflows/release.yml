@@ -1,0 +1,65 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun run typecheck
+
+      - run: bun run lint
+
+      - name: Build release archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          bun build src/index.ts --compile --target bun-darwin-arm64 --outfile dist/catty-darwin-arm64
+          bun build src/index.ts --compile --target bun-darwin-x64 --outfile dist/catty-darwin-x64
+          bun build src/index.ts --compile --target bun-linux-x64 --outfile dist/catty-linux-x64
+
+          mkdir -p release
+          mkdir -p "release/catty-${VERSION}-darwin-arm64"
+          cp dist/catty-darwin-arm64 "release/catty-${VERSION}-darwin-arm64/catty"
+          tar -C "release/catty-${VERSION}-darwin-arm64" -czf "catty-${VERSION}-darwin-arm64.tar.gz" catty
+
+          mkdir -p "release/catty-${VERSION}-darwin-amd64"
+          cp dist/catty-darwin-x64 "release/catty-${VERSION}-darwin-amd64/catty"
+          tar -C "release/catty-${VERSION}-darwin-amd64" -czf "catty-${VERSION}-darwin-amd64.tar.gz" catty
+
+          mkdir -p "release/catty-${VERSION}-linux-amd64"
+          cp dist/catty-linux-x64 "release/catty-${VERSION}-linux-amd64/catty"
+          tar -C "release/catty-${VERSION}-linux-amd64" -czf "catty-${VERSION}-linux-amd64.tar.gz" catty
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: catty-*.tar.gz
+          generate_release_notes: true
+
+      - name: Trigger Homebrew tap update
+        env:
+          GH_TOKEN: ${{ secrets.BUAPE_TAP_DISPATCH_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh api repos/buape/tap/dispatches \
+            --method POST \
+            -f event_type=catty_release \
+            -F client_payload[repo]=buape/catty \
+            -F client_payload[tag]="$TAG"

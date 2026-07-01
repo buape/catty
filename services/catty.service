@@ -1,0 +1,14 @@
+[Unit]
+Description=Catty personal assistant harness
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/lib/catty/workspace
+ExecStart=/usr/local/bin/catty --config /etc/catty/config.toml
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
