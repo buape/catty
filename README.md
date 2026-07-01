@@ -4,79 +4,72 @@ KISS personal assistant agent harness for Discord.
 
 Catty is the project/harness. The actual agent name and personality live in the end-user workspace `ME.md`.
 
-## Defaults
-
-- Config: `~/.catty/config.toml`
-- Workspace: `~/.catty/workspace`
-- First launch writes minimal config + workspace templates.
-- Runtime: Bun
-- Discord connector: Carbon
-- Agent runtime: one shared pi session
-
 ## Install
 
 ```bash
-bun install
+brew install buape/tap/catty
 ```
 
-## Configure
+## First launch
 
-Start once to write the minimal config:
+Run Catty once to create the default config and workspace templates:
 
 ```bash
-bun run start
+catty
 ```
 
-Edit:
+Defaults:
+
+- Config: `~/.catty/config.toml`
+- Workspace: `~/.catty/workspace`
+- Agent runtime: one shared pi session
+- Discord connector: Carbon
+
+Edit the generated config:
 
 ```bash
-~/.catty/config.toml
+code ~/.catty/config.toml
+```
+
+At minimum, fill in the required Discord values:
+
+```toml
+[discord]
+baseUrl = "http://localhost:3000"
+clientId = "your-discord-application-id"
+publicKey = "your-discord-public-key"
+token = "your-discord-bot-token"
 ```
 
 Full config reference: [`docs/config.md`](docs/config.md)
 
-## GPT subscription OAuth without opening pi
+## GPT subscription OAuth
+
+Catty wraps pi's ChatGPT/Codex OAuth flow, so users do not need to open pi directly.
 
 ```bash
-bun run start -- auth login
+catty auth login
 ```
 
-This uses the ChatGPT/Codex device-code OAuth flow and stores credentials in pi's normal auth store, usually:
+Follow the printed device-code instructions. Credentials are stored in pi's normal auth store, usually:
 
 ```text
 ~/.pi/agent/auth.json
 ```
 
-For a service, run the auth command as the same OS user that runs Catty.
+For launchd/systemd, run `catty auth login` as the same OS user that runs the service.
 
 ## Run
 
 ```bash
-bun run start
+catty
 ```
 
 Custom config path:
 
 ```bash
-bun run start -- --config /path/to/config.toml
+catty --config /path/to/config.toml
 ```
-
-## Build
-
-```bash
-bun run typecheck
-bun run lint
-bun run build
-bun run build:binary
-```
-
-Release binaries locally:
-
-```bash
-bun run release
-```
-
-GitHub releases and Homebrew tap publishing are tag-driven. See [`docs/releases.md`](docs/releases.md).
 
 ## Workspace files
 
@@ -96,3 +89,19 @@ Templates:
 
 - macOS launchd: `services/com.catty.agent.plist`
 - Linux systemd: `services/catty.service`
+
+The macOS template assumes the Homebrew binary path and `~/.catty/config.toml`. Edit paths before installing it.
+
+## Development
+
+For local development from source:
+
+```bash
+bun install
+bun run typecheck
+bun run lint
+bun run build
+bun run build:binary
+```
+
+GitHub releases and Homebrew tap publishing are tag-driven. See [`docs/releases.md`](docs/releases.md).
