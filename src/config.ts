@@ -2,9 +2,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 
+const configVersion = 1
+
 const cattyDir = join(homedir(), ".catty")
 const defaultConfigPath = join(cattyDir, "config.toml")
 const defaultWorkspace = join(cattyDir, "workspace")
+const templateConfigPath = join(import.meta.dirname, "../docs/templates/config.toml")
 const configArgIndex = Bun.argv.indexOf("--config")
 
 export const configPath = resolve(
@@ -13,31 +16,57 @@ export const configPath = resolve(
 		: (Bun.argv[configArgIndex + 1] ?? "")
 )
 
-if (!existsSync(configPath)) {
-	mkdirSync(dirname(configPath), { recursive: true })
-	writeFileSync(
-		configPath,
-		`# Catty config. Fill in the required Discord values, then restart Catty.
-# Full config reference: https://github.com/thewilloftheshadow/catty/blob/main/docs/config.md
+const firstLaunch = !existsSync(configPath)
 
-[discord]
-baseUrl = "http://localhost:3000"
-clientId = "your-discord-application-id"
-publicKey = "your-discord-public-key"
-token = "your-discord-bot-token"
-`
-	)
+if (firstLaunch) {
+	mkdirSync(dirname(configPath), { recursive: true })
+	writeFileSync(configPath, readFileSync(templateConfigPath, "utf8"))
 }
 
-export const config = Bun.TOML.parse(readFileSync(configPath, "utf8")) as {
+let configText = readFileSync(configPath, "utf8")
+
+const getConfigVersion = (text: string) => {
+	for (const line of text.split("\n")) {
+		const match = line.match(/^\s*version\s*=\s*(\d+)\s*$/)
+		if (match) return Number(match[1])
+	}
+}
+
+const setConfigVersion = (text: string, version: number) => {
+	const lines = text.split("\n")
+	for (let i = 0; i < lines.length; i++) {
+		if (/^\s*version\s*=\s*\d+\s*$/.test(lines[i] ?? "")) {
+			lines[i] = `version = ${version}`
+			return lines.join("\n")
+		}
+	}
+	return `${text.trimEnd()}\n\n# DO NOT CHANGE THIS VALUE\nversion = ${version}\n`
+}
+
+const migrations: Record<number, (text: string) => string> = {
+	1: (text) => text
+}
+
+const storedConfigVersion = getConfigVersion(configText) ?? 0
+if (storedConfigVersion > configVersion)
+	throw new Error(
+		`Config version ${storedConfigVersion} is newer than Catty supports (${configVersion})`
+	)
+
+if (storedConfigVersion < configVersion) {
+	for (let version = storedConfigVersion + 1; version <= configVersion; version++) {
+		const migrate = migrations[version]
+		if (!migrate)
+			throw new Error(`Missing config migration for version ${version}`)
+		configText = migrate(configText)
+	}
+	configText = setConfigVersion(configText, configVersion)
+	writeFileSync(configPath, configText)
+}
+
+export const config = Bun.TOML.parse(configText) as {
 	discord: {
-		baseUrl: string
-		clientId: string
-		publicKey: string | string[]
 		token: string
-		deploySecret?: string
-		port?: number
-		totalShards?: number
 	}
 	pi?: {
 		workspace?: string
@@ -65,6 +94,11 @@ export const config = Bun.TOML.parse(readFileSync(configPath, "utf8")) as {
 		default?: string
 		prefix?: string
 		channels?: Record<string, string>
+	}
+	heartbeat?: {
+		enabled: boolean
+		file?: string
+		intervalMinutes?: number
 	}
 }
 export const workspace = resolve(
@@ -106,4 +140,15 @@ if (!existsSync(join(workspace, "ME.md"))) {
 Name the agent here, then describe how this agent should behave.
 `
 	)
+}
+
+if (firstLaunch) {
+	console.log("Catty created first-launch files:")
+	console.log(`- ${configPath}`)
+	console.log(`- ${join(workspace, "AGENTS.md")}`)
+	console.log(`- ${join(workspace, "USER.md")}`)
+	console.log(`- ${join(workspace, "ME.md")}`)
+	console.log("")
+	console.log("Fill out the config and workspace Markdown files, then restart Catty.")
+	process.exit(0)
 }

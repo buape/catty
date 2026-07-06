@@ -7,26 +7,34 @@ Catty is the project/harness. The running assistant is an agent inside Catty; it
 ## Runtime flow
 
 1. Load `~/.catty/config.toml` unless `--config` is passed.
-2. Create `~/.catty/workspace` and template files on first launch.
-3. Create one pi `AgentSession` for the configured workspace.
-4. Start one Carbon `Client` with a `MessageCreateListener`.
-5. Carbon receives Discord `MESSAGE_CREATE` events through the Gateway plugin.
-6. Listener ignores bot messages.
-7. Listener checks DM users or nested guild/channel user-role whitelists.
-8. Listener checks the channel response mode.
-9. Accepted message text goes to the one pi session.
-10. Assistant text is collected from pi stream events.
-11. Listener replies in Discord.
+2. If this is first launch, write the example config plus workspace templates, print the paths, and exit.
+3. Run config migrations when the embedded config version increases.
+4. Create one pi `AgentSession` for the configured workspace.
+5. Start one Carbon `Client` with a `MessageCreateListener`.
+6. Carbon receives Discord `MESSAGE_CREATE` events through `GatewayPlugin`.
+7. Listener logs the received Discord message.
+8. Listener ignores bot messages.
+9. Listener checks DM users or nested guild/channel user-role whitelists.
+10. Listener checks the channel response mode.
+11. Accepted message text and reply context are wrapped in untrusted begin/end blocks and sent to pi.
+12. Discord typing is triggered while the queued pi prompt is waiting/running.
+13. Assistant text is collected from pi stream events.
+14. Listener replies in Discord and logs the final response.
+15. If heartbeat is enabled, the configured heartbeat file is prompted on the same queue.
 
 ## One-session rule
 
-There is exactly one pi session object for the process. It is created at startup and reused for every accepted Discord message.
+There is exactly one pi session object for the process. It is created at startup and reused for every accepted Discord message and heartbeat prompt.
 
 No maps keyed by channel, user, guild, thread, or role. No session pools. No session factory inside the message listener.
 
 ## Config
 
-Minimal config is written automatically on first launch. Full config reference lives in `docs/config.md`.
+The example config is written automatically on first launch, along with workspace Markdown templates. Catty exits immediately so the user can fill them out before the first real run.
+
+Config contains a `version = 1` schema marker. `src/config.ts` has a hardcoded config version and a simple text migration table. If the code version increases, migrations run before TOML parsing and update the version line.
+
+Full config reference lives in `docs/config.md`.
 
 ## Prompting
 
@@ -48,7 +56,7 @@ Use the SDK:
 
 Keep the bridge minimal. Subscribe during a prompt, collect `text_delta`, unsubscribe after the prompt completes, then reply.
 
-If a message arrives while pi is already working, use a simple in-process queue so Discord messages are processed one at a time. This preserves one coherent conversation.
+If a message arrives while pi is already working, use a simple in-process queue so Discord messages and heartbeat prompts are processed one at a time. This preserves one coherent conversation.
 
 ## Carbon integration
 
@@ -56,11 +64,13 @@ Use Carbon-native pieces:
 
 - `Client`
 - `MessageCreateListener`
-- `ShardingPlugin`/Gateway support for message events
+- `GatewayPlugin` for message events
 - `GatewayIntents.Guilds | GatewayIntents.GuildMessages | GatewayIntents.MessageContent`
 - `createServer` from `@buape/carbon/adapters/bun` for HTTP routes
 
 Keep command handling minimal. The assistant is message-first, not slash-command-first.
+
+Catty uses Discord typing indicators instead of sending a temporary `Thinking…` message.
 
 ## Binary and services
 

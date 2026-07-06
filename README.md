@@ -12,30 +12,24 @@ brew install buape/tap/catty
 
 ## First launch
 
-Run Catty once to create the default config and workspace templates:
+Run Catty once to create the default config and workspace templates, then exit:
 
 ```bash
 catty
 ```
 
-Defaults:
+Catty creates:
 
 - Config: `~/.catty/config.toml`
 - Workspace: `~/.catty/workspace`
-- Agent runtime: one shared pi session
-- Discord connector: Carbon
+- Workspace files: `AGENTS.md`, `USER.md`, `ME.md`
 
-Edit the generated config:
+Fill out the generated config and Markdown files, then restart Catty.
 
-```bash
-code ~/.catty/config.toml
-```
-
-At minimum, fill in the required Discord values:
+At minimum, set the required Discord values:
 
 ```toml
 [discord]
-baseUrl = "http://localhost:3000"
 clientId = "your-discord-application-id"
 publicKey = "your-discord-public-key"
 token = "your-discord-bot-token"
@@ -78,10 +72,21 @@ Created under `~/.catty/workspace` by default:
 - `AGENTS.md` — workspace guidance.
 - `USER.md` — primary user context.
 - `ME.md` — agent name and personality.
+- `HEARTBEAT.md` — optional heartbeat prompt source when enabled.
 - `.pi/skills/` — pi skills.
 - `.pi/extensions/` — pi extensions.
 
 Catty's own harness system prompt is embedded in code at `src/prompt.ts`.
+
+## Runtime behavior
+
+- One Catty process uses one shared pi session.
+- Discord messages are queued through that one session.
+- Reply context is included when a Discord message replies to another message.
+- User-provided Discord content is wrapped in per-message untrusted begin/end blocks before pi sees it.
+- Catty uses Discord typing indicators while pi is working instead of sending `Thinking…`.
+- Verbose logs show received Discord messages, the exact prompt sent to pi, pi status/events, and final responses.
+- Optional heartbeat prompts run from `HEARTBEAT.md` only when `[heartbeat].enabled = true` is set.
 
 ## Services
 

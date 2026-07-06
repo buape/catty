@@ -1,36 +1,69 @@
+ # ▗▄▄▖▗▞▀▜▌   ■     ■  ▄   ▄ 
+# ▐▌   ▝▚▄▟▌▗▄▟▙▄▖▗▄▟▙▄▖█   █ 
+# ▐▌          ▐▌    ▐▌   ▀▀▀█ 
+# ▝▚▄▄▖       ▐▌    ▐▌  ▄   █ 
+#            ▐▌    ▐▌   ▀▀▀  
+
+# Discord application and bot settings.
 [discord]
-baseUrl = "http://localhost:3000"
-clientId = "your-discord-application-id"
-publicKey = "your-discord-public-key"
+# Discord bot token.
 token = "your-discord-bot-token"
-deploySecret = "change-me"
-port = 3000
 
+# pi workspace/session/model settings.
 [pi]
-workspace = "~/.catty/workspace"
-agentDir = "~/.pi/agent"
-provider = "openai-codex"
-model = "gpt-5.5"
-thinking = "medium"
+# Workspace directory Catty exposes to pi. Default: ~/.catty/workspace.
+# workspace = "~/.catty/workspace"
+# pi agent directory for auth.json, models.json, skills, extensions, etc. Default: pi's agent dir.
+# agentDir = "~/.pi/agent"
+# Optional pi provider/model override. Omit to use pi defaults.
+# provider = "openai-codex"
+# model = "gpt-5.5"
+# Optional thinking level: off, minimal, low, medium, high, xhigh. Omit to use pi default.
+# thinking = "medium"
 
+# Runtime API keys made available to pi providers.
 [pi.apiKeys]
-openai = "optional-openai-api-key"
-ollama-cloud = "optional-ollama-cloud-key-if-your-models-json-provider-uses-this-name"
+# Provider names must match pi's provider IDs. Commented because these are optional.
+# openai = "optional-openai-api-key"
+# ollama-cloud = "optional-ollama-cloud-key-if-your-models-json-provider-uses-this-name"
 
+# DM authorization.
 [auth]
-users = ["dm-user-id"]
+# DM allowlist. Omit auth.users to allow anyone in DMs. Empty array allows nobody in DMs.
+# users = ["dm-user-id"]
 
-[auth.guilds."guild-id"]
-users = ["guild-user-id"]
-roles = ["guild-role-id"]
+# Guild authorization for a specific guild.
+# [auth.guilds."guild-id"]
+# Guild-level user/role allowlists. Omit both to allow anyone in this guild.
+# users = ["guild-user-id"]
+# roles = ["guild-role-id"]
 
-[auth.guilds."guild-id".channels."channel-id"]
-users = ["channel-user-id"]
-roles = ["channel-role-id"]
+# Channel authorization inside a guild.
+# [auth.guilds."guild-id".channels."channel-id"]
+# Channel-level user/role allowlists. Omit both to allow anyone passing guild auth.
+# users = ["channel-user-id"]
+# roles = ["channel-role-id"]
 
+# Response behavior.
 [responses]
-default = "all"
-prefix = "!catty"
+# Default mode: all, mention-or-reply, or prefix. Default: all.
+# default = "all"
+# Prefix used when mode is prefix. Default: !catty.
+# prefix = "!catty"
 
-[responses.channels]
-channel-id = "mention-or-reply"
+# Per-channel response mode overrides.
+# [responses.channels]
+# Channel IDs map to: all, mention-or-reply, or prefix.
+# channel-id = "mention-or-reply"
+
+# Hourly heartbeat behavior. Disabled unless heartbeat.enabled is explicitly set to true.
+[heartbeat]
+# Enable heartbeat prompts. Required to turn heartbeat on. Default: false.
+# enabled = true
+# Heartbeat file path relative to workspace. Default: HEARTBEAT.md.
+# file = "HEARTBEAT.md"
+# Minutes between heartbeat prompts. Default: 60.
+# intervalMinutes = 60
+
+# DO NOT CHANGE THIS VALUE
+version = 1

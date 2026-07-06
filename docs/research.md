@@ -53,13 +53,13 @@ Sources reviewed:
 Implementation notes:
 
 - Carbon is HTTP-interactions-first, but message events require Gateway support.
-- Use `Client` with listeners and `ShardingPlugin`/Gateway support for `MESSAGE_CREATE`.
-- For a single-machine personal assistant, use one shard by config unless Discord recommends otherwise; keep this simple.
+- Use `Client` with listeners and `GatewayPlugin` for `MESSAGE_CREATE`.
+- Do not expose sharding config for Catty; keep this personal-assistant deployment on one Gateway connection.
 - Gateway intents needed for normal message content: `GatewayIntents.Guilds | GatewayIntents.GuildMessages | GatewayIntents.MessageContent`. Role checks may need guild member data present in message events; if not, use payload member roles or fetch as needed.
 - `MessageCreateListener` is the native Carbon listener for Discord messages.
 - `Message` supports `reply(...)`, so the listener can reply to the triggering message.
 - Carbon's Bun adapter exposes `createServer(client, options)` using `Bun.serve`; use it for any HTTP interaction/deploy routes rather than hand-rolling request routing.
-- Carbon client requires `baseUrl`, `clientId`, `publicKey`, `token`, and `deploySecret` unless deploy route is disabled.
+- Carbon client requires `baseUrl`, `clientId`, `publicKey`, and `token`. Catty hardcodes `baseUrl` to `http://localhost` and disables the deploy route.
 
 ## Bun
 

@@ -6,13 +6,20 @@ Default path:
 ~/.catty/config.toml
 ```
 
-Catty writes a minimal config on first launch. It only includes required Discord fields. Add optional sections when you need them.
+On first launch, Catty writes `~/.catty/config.toml` from `docs/templates/config.toml`, creates the workspace Markdown templates, prints the created paths, then exits. Fill out the files and restart Catty.
 
-## Minimal first-launch config
+First-launch workspace files:
+
+- `AGENTS.md`
+- `USER.md`
+- `ME.md`
+- `.pi/skills/`
+- `.pi/extensions/`
+
+## Minimal required config
 
 ```toml
 [discord]
-baseUrl = "http://localhost:3000"
 clientId = "your-discord-application-id"
 publicKey = "your-discord-public-key"
 token = "your-discord-bot-token"
@@ -22,59 +29,77 @@ token = "your-discord-bot-token"
 
 ```toml
 [discord]
-baseUrl = "http://localhost:3000"
 clientId = "your-discord-application-id"
 publicKey = "your-discord-public-key"
 token = "your-discord-bot-token"
-deploySecret = "change-me"
-port = 3000
-totalShards = 1
 
 [pi]
-workspace = "~/.catty/workspace"
-agentDir = "~/.pi/agent"
-provider = "openai-codex"
-model = "gpt-5.5"
-thinking = "medium"
+# workspace = "~/.catty/workspace"
+# agentDir = "~/.pi/agent"
+# provider = "openai-codex"
+# model = "gpt-5.5"
+# thinking = "medium"
 
 [pi.apiKeys]
-openai = "optional-openai-api-key"
-ollama-cloud = "optional-ollama-cloud-key-if-your-models-json-provider-uses-this-name"
+# openai = "optional-openai-api-key"
+# ollama-cloud = "optional-ollama-cloud-key-if-your-models-json-provider-uses-this-name"
 
 [auth]
-users = ["dm-user-id"]
+# users = ["dm-user-id"]
 
-[auth.guilds."guild-id"]
-users = ["guild-user-id"]
-roles = ["guild-role-id"]
+# [auth.guilds."guild-id"]
+# users = ["guild-user-id"]
+# roles = ["guild-role-id"]
 
-[auth.guilds."guild-id".channels."channel-id"]
-users = ["channel-user-id"]
-roles = ["channel-role-id"]
+# [auth.guilds."guild-id".channels."channel-id"]
+# users = ["channel-user-id"]
+# roles = ["channel-role-id"]
 
 [responses]
-default = "all"
-prefix = "!catty"
+# default = "all"
+# prefix = "!catty"
 
-[responses.channels]
-channel-id = "mention-or-reply"
+# [responses.channels]
+# channel-id = "mention-or-reply"
+
+[heartbeat]
+# Required to turn heartbeat on. Default: false.
+# enabled = true
+# file = "HEARTBEAT.md"
+# intervalMinutes = 60
+
+# DO NOT CHANGE THIS VALUE
+version = 1
 ```
 
 ## Required fields
 
-- `discord.baseUrl`
 - `discord.clientId`
 - `discord.publicKey`
 - `discord.token`
+
+`version` is Catty's config schema version. Do not edit it manually; Catty updates it when migrations run.
+
+Heartbeat is disabled unless `heartbeat.enabled = true` is present in config.
+
+Removed/non-configurable values:
+
+- `discord.baseUrl` is not configurable. Carbon uses `http://localhost`.
+- `discord.port` is not configurable. The Bun server listens on `3000`.
+- `discord.deploySecret` is not used because the deploy route is disabled.
+- `discord.totalShards` is not used because Catty uses Carbon's `GatewayPlugin`, not `ShardingPlugin`.
 
 ## Defaults
 
 - Config path: `~/.catty/config.toml`
 - Workspace: `~/.catty/workspace`
-- HTTP port: `3000`
+- Carbon base URL: `http://localhost`
+- HTTP port: `3000` (not configurable)
 - Response mode: `all`
 - Prefix mode prefix: `!catty`
-- Shards: `1`
+- Heartbeat enabled: `false`
+- Heartbeat file: `HEARTBEAT.md`
+- Heartbeat interval: `60` minutes
 
 ## Providers
 
@@ -141,3 +166,16 @@ Empty `users` or `roles` arrays match nobody for that array. If both users and r
 - `all`: respond to every allowed message.
 - `mention-or-reply`: respond only if the bot is mentioned or the message replies to the bot.
 - `prefix`: respond only when the message starts with the configured prefix.
+
+## Heartbeat
+
+Heartbeat is an optional hourly-style prompt from a workspace file. It uses the same single pi session and the same in-process queue as Discord messages.
+
+```toml
+[heartbeat]
+enabled = true
+# file = "HEARTBEAT.md"
+# intervalMinutes = 60
+```
+
+When enabled, Catty reads the configured file relative to the workspace, skips missing/empty files, and logs the exact heartbeat prompt and final pi response.
