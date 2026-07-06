@@ -7,7 +7,10 @@ const configVersion = 1
 const cattyDir = join(homedir(), ".catty")
 const defaultConfigPath = join(cattyDir, "config.toml")
 const defaultWorkspace = join(cattyDir, "workspace")
-const templateConfigPath = join(import.meta.dirname, "../docs/templates/config.toml")
+const templateConfigPath = join(
+	import.meta.dirname,
+	"../docs/templates/config.toml"
+)
 const configArgIndex = Bun.argv.indexOf("--config")
 
 export const configPath = resolve(
@@ -54,7 +57,11 @@ if (storedConfigVersion > configVersion)
 	)
 
 if (storedConfigVersion < configVersion) {
-	for (let version = storedConfigVersion + 1; version <= configVersion; version++) {
+	for (
+		let version = storedConfigVersion + 1;
+		version <= configVersion;
+		version++
+	) {
 		const migrate = migrations[version]
 		if (!migrate)
 			throw new Error(`Missing config migration for version ${version}`)
@@ -148,6 +155,8 @@ if (firstLaunch) {
 	console.log(`- ${join(workspace, "USER.md")}`)
 	console.log(`- ${join(workspace, "ME.md")}`)
 	console.log("")
-	console.log("Fill out the config and workspace Markdown files, then restart Catty.")
+	console.log(
+		"Fill out the config and workspace Markdown files, then restart Catty."
+	)
 	process.exit(0)
 }

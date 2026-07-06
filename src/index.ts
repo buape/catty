@@ -95,9 +95,12 @@ const installService = async () => {
 </plist>
 `
 		)
-		await run(["launchctl", "bootstrap", `gui/${userInfo().uid}`, serviceFile()]).catch(
-			() => {}
-		)
+		await run([
+			"launchctl",
+			"bootstrap",
+			`gui/${userInfo().uid}`,
+			serviceFile()
+		]).catch(() => {})
 		await run(["launchctl", "enable", serviceTarget()])
 		console.log(`Installed ${serviceFile()}`)
 		return
@@ -128,14 +131,22 @@ WantedBy=default.target
 
 const runService = async (action: string) => {
 	if (platform() === "darwin") {
-		if (action === "start") await run(["launchctl", "kickstart", "-k", serviceTarget()])
-		if (action === "stop") await run(["launchctl", "bootout", serviceTarget()])
+		if (action === "start")
+			await run(["launchctl", "kickstart", "-k", serviceTarget()])
+		if (action === "stop")
+			await run(["launchctl", "bootout", serviceTarget()])
 		if (action === "restart") {
 			await run(["launchctl", "bootout", serviceTarget()]).catch(() => {})
-			await run(["launchctl", "bootstrap", `gui/${userInfo().uid}`, serviceFile()])
+			await run([
+				"launchctl",
+				"bootstrap",
+				`gui/${userInfo().uid}`,
+				serviceFile()
+			])
 			await run(["launchctl", "kickstart", "-k", serviceTarget()])
 		}
-		if (action === "status") await run(["launchctl", "print", serviceTarget()])
+		if (action === "status")
+			await run(["launchctl", "print", serviceTarget()])
 		if (action === "uninstall") {
 			await run(["launchctl", "bootout", serviceTarget()]).catch(() => {})
 			if (existsSync(serviceFile())) await run(["rm", serviceFile()])
@@ -144,7 +155,13 @@ const runService = async (action: string) => {
 	}
 
 	if (action === "uninstall") {
-		await run(["systemctl", "--user", "disable", "--now", "catty.service"]).catch(() => {})
+		await run([
+			"systemctl",
+			"--user",
+			"disable",
+			"--now",
+			"catty.service"
+		]).catch(() => {})
 		if (existsSync(serviceFile())) await run(["rm", serviceFile()])
 		await run(["systemctl", "--user", "daemon-reload"])
 		return
@@ -154,10 +171,18 @@ const runService = async (action: string) => {
 
 const showLogs = async (follow: boolean) => {
 	if (platform() === "darwin") {
-		await run(follow ? ["tail", "-f", logPath, errorLogPath] : ["tail", "-n", "200", logPath, errorLogPath])
+		await run(
+			follow
+				? ["tail", "-f", logPath, errorLogPath]
+				: ["tail", "-n", "200", logPath, errorLogPath]
+		)
 		return
 	}
-	await run(follow ? ["journalctl", "--user", "-u", "catty.service", "-f"] : ["journalctl", "--user", "-u", "catty.service", "-n", "200"])
+	await run(
+		follow
+			? ["journalctl", "--user", "-u", "catty.service", "-f"]
+			: ["journalctl", "--user", "-u", "catty.service", "-n", "200"]
+	)
 }
 
 const args = Bun.argv.slice(2)
@@ -170,7 +195,9 @@ if (!command) {
 } else if (command === "auth" && args[args.indexOf("auth") + 1] === "login") {
 	const provider = args[args.indexOf("auth") + 2] ?? "openai-codex"
 	if (provider !== "openai-codex")
-		throw new Error(`Only openai-codex OAuth is wired right now: ${provider}`)
+		throw new Error(
+			`Only openai-codex OAuth is wired right now: ${provider}`
+		)
 
 	const authStorage = AuthStorage.create(join(agentDir, "auth.json"))
 	for (const [provider, key] of Object.entries(config.pi?.apiKeys ?? {})) {
@@ -200,8 +227,11 @@ if (!command) {
 } else if (command === "service") {
 	const action = args[args.indexOf("service") + 1]
 	if (action === "install") await installService()
-	else if (action === "logs") await showLogs(args.includes("--follow") || args.includes("-f"))
-	else if (["start", "stop", "restart", "status", "uninstall"].includes(action))
+	else if (action === "logs")
+		await showLogs(args.includes("--follow") || args.includes("-f"))
+	else if (
+		["start", "stop", "restart", "status", "uninstall"].includes(action)
+	)
 		await runService(action)
 	else printHelp()
 } else {

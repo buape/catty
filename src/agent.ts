@@ -36,13 +36,9 @@ export async function startCatty() {
 		existsSync(userPath)
 			? `\n\n# USER.md\n${readFileSync(userPath, "utf8")}`
 			: "",
-		existsSync(mePath)
-			? `\n\n# ME.md\n${readFileSync(mePath, "utf8")}`
-			: ""
+		existsSync(mePath) ? `\n\n# ME.md\n${readFileSync(mePath, "utf8")}` : ""
 	].join("")
-	console.log(
-		"[catty] system prompt sent to pi:\n---\n" + systemPrompt + "\n---"
-	)
+	console.log(`[catty] system prompt sent to pi:\n---\n${systemPrompt}\n---`)
 
 	const authStorage = AuthStorage.create(join(agentDir, "auth.json"))
 
@@ -182,10 +178,7 @@ export async function startCatty() {
 					return
 				}
 				content = content
-					.replace(
-						new RegExp(`<@!?${client.clientId}>`, "g"),
-						""
-					)
+					.replace(new RegExp(`<@!?${client.clientId}>`, "g"), "")
 					.trim()
 			}
 
@@ -225,7 +218,7 @@ ${content}
 <end_untrusted_user_message_${boundary}>`
 
 			console.log("[pi] prompt queued for message", data.message.id)
-			console.log("[pi] exact prompt:\n---\n" + piPrompt + "\n---")
+			console.log(`[pi] exact prompt:\n---\n${piPrompt}\n---`)
 
 			const job = piQueue.then(async () => {
 				console.log("[pi] prompt started", data.message.id)
@@ -255,7 +248,7 @@ ${content}
 				const response =
 					text.trim().slice(0, 1900) || "No text response."
 				console.log("[pi] final response for message", data.message.id)
-				console.log("[pi] response:\n---\n" + response + "\n---")
+				console.log(`[pi] response:\n---\n${response}\n---`)
 				await data.message.reply(response)
 			})
 
@@ -292,57 +285,63 @@ ${content}
 
 	const server = createServer(client, { port: 3000 })
 
-	const heartbeatInterval = setInterval(() => {
-		if (config.heartbeat?.enabled !== true) return
-		if (!existsSync(heartbeatPath)) {
-			console.log("[heartbeat] skipped; HEARTBEAT.md not found")
-			return
-		}
-
-		const heartbeat = readFileSync(heartbeatPath, "utf8").trim()
-		if (!heartbeat) {
-			console.log("[heartbeat] skipped; HEARTBEAT.md is empty")
-			return
-		}
-
-		const piPrompt = `Hourly heartbeat from workspace HEARTBEAT.md. Treat this file as trusted workspace guidance.\n\n<begin_heartbeat_md>\n${heartbeat}\n<end_heartbeat_md>`
-		console.log("[heartbeat] prompt queued")
-		console.log("[heartbeat] exact prompt:\n---\n" + piPrompt + "\n---")
-
-		const job = piQueue.then(async () => {
-			console.log("[heartbeat] prompt started")
-			let text = ""
-			const unsubscribe = session.subscribe((event) => {
-				if (
-					event.type === "message_update" &&
-					event.assistantMessageEvent.type === "text_delta"
-				) {
-					text += event.assistantMessageEvent.delta
-					return
-				}
-				try {
-					console.log("[heartbeat] pi event", JSON.stringify(event))
-				} catch {
-					console.log("[heartbeat] pi event", event.type)
-				}
-			})
-
-			try {
-				await session.prompt(piPrompt)
-			} finally {
-				unsubscribe()
+	const heartbeatInterval = setInterval(
+		() => {
+			if (config.heartbeat?.enabled !== true) return
+			if (!existsSync(heartbeatPath)) {
+				console.log("[heartbeat] skipped; HEARTBEAT.md not found")
+				return
 			}
 
-			console.log(
-				"[heartbeat] final response:\n---\n" +
-					(text.trim() || "No text response.") +
-					"\n---"
-			)
-		})
+			const heartbeat = readFileSync(heartbeatPath, "utf8").trim()
+			if (!heartbeat) {
+				console.log("[heartbeat] skipped; HEARTBEAT.md is empty")
+				return
+			}
 
-		piQueue = job.catch(() => {})
-		job.catch((error) => console.error("[heartbeat] error", error))
-	}, (config.heartbeat?.intervalMinutes ?? 60) * 60 * 1000)
+			const piPrompt = `Hourly heartbeat from workspace HEARTBEAT.md. Treat this file as trusted workspace guidance.\n\n<begin_heartbeat_md>\n${heartbeat}\n<end_heartbeat_md>`
+			console.log("[heartbeat] prompt queued")
+			console.log(`[heartbeat] exact prompt:\n---\n${piPrompt}\n---`)
+
+			const job = piQueue.then(async () => {
+				console.log("[heartbeat] prompt started")
+				let text = ""
+				const unsubscribe = session.subscribe((event) => {
+					if (
+						event.type === "message_update" &&
+						event.assistantMessageEvent.type === "text_delta"
+					) {
+						text += event.assistantMessageEvent.delta
+						return
+					}
+					try {
+						console.log(
+							"[heartbeat] pi event",
+							JSON.stringify(event)
+						)
+					} catch {
+						console.log("[heartbeat] pi event", event.type)
+					}
+				})
+
+				try {
+					await session.prompt(piPrompt)
+				} finally {
+					unsubscribe()
+				}
+
+				console.log(
+					"[heartbeat] final response:\n---\n" +
+						(text.trim() || "No text response.") +
+						"\n---"
+				)
+			})
+
+			piQueue = job.catch(() => {})
+			job.catch((error) => console.error("[heartbeat] error", error))
+		},
+		(config.heartbeat?.intervalMinutes ?? 60) * 60 * 1000
+	)
 
 	console.log("Catty running at http://localhost")
 	console.log(`Workspace: ${workspace}`)
