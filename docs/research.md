@@ -59,7 +59,7 @@ Implementation notes:
 - `MessageCreateListener` is the native Carbon listener for Discord messages.
 - `Message` supports `reply(...)`, so the listener can reply to the triggering message.
 - Carbon's Bun adapter exposes `createServer(client, options)` using `Bun.serve`; use it for any HTTP interaction/deploy routes rather than hand-rolling request routing.
-- Carbon client requires `baseUrl`, `clientId`, `publicKey`, and `token`. Catty hardcodes `baseUrl` to `http://localhost` and disables the deploy route.
+- Carbon client requires `baseUrl` and `token`. Catty hardcodes `baseUrl` to `http://localhost`, lets Carbon derive `clientId` and fetch `publicKey`, and disables the deploy route.
 
 ## Bun
 

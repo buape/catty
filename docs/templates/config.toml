@@ -4,10 +4,11 @@
 # ▝▚▄▄▖       ▐▌    ▐▌  ▄   █ 
 #            ▐▌    ▐▌   ▀▀▀  
 
-# Discord application and bot settings.
-[discord]
 # Discord bot token.
 token = "your-discord-bot-token"
+
+# Whether Catty sends all messages or just the responses
+verbose = false
 
 # pi workspace/session/model settings.
 [pi]

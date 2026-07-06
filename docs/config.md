@@ -20,8 +20,6 @@ First-launch workspace files:
 
 ```toml
 [discord]
-clientId = "your-discord-application-id"
-publicKey = "your-discord-public-key"
 token = "your-discord-bot-token"
 ```
 
@@ -29,8 +27,6 @@ token = "your-discord-bot-token"
 
 ```toml
 [discord]
-clientId = "your-discord-application-id"
-publicKey = "your-discord-public-key"
 token = "your-discord-bot-token"
 
 [pi]
@@ -74,8 +70,6 @@ version = 1
 
 ## Required fields
 
-- `discord.clientId`
-- `discord.publicKey`
 - `discord.token`
 
 `version` is Catty's config schema version. Do not edit it manually; Catty updates it when migrations run.
@@ -85,6 +79,8 @@ Heartbeat is disabled unless `heartbeat.enabled = true` is present in config.
 Removed/non-configurable values:
 
 - `discord.baseUrl` is not configurable. Carbon uses `http://localhost`.
+- `discord.clientId` is not configurable. Carbon derives it from the bot token.
+- `discord.publicKey` is not configurable. Carbon fetches it when needed.
 - `discord.port` is not configurable. The Bun server listens on `3000`.
 - `discord.deploySecret` is not used because the deploy route is disabled.
 - `discord.totalShards` is not used because Catty uses Carbon's `GatewayPlugin`, not `ShardingPlugin`.

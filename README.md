@@ -26,12 +26,10 @@ Catty creates:
 
 Fill out the generated config and Markdown files, then restart Catty.
 
-At minimum, set the required Discord values:
+At minimum, set the Discord bot token:
 
 ```toml
 [discord]
-clientId = "your-discord-application-id"
-publicKey = "your-discord-public-key"
 token = "your-discord-bot-token"
 ```
 
