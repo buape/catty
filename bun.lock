@@ -4,7 +4,7 @@
   "workspaces": {
     "": {
       "dependencies": {
-        "@buape/carbon": "^0.0.0-beta-20260706052415",
+        "@buape/carbon": "^0.0.0-beta-20260708153607",
         "@earendil-works/pi-coding-agent": "0.80.3",
       },
       "devDependencies": {
@@ -85,7 +85,7 @@
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.5.2", "", { "os": "win32", "cpu": "x64" }, "sha512-4InchVpdVmdkkkgjQqKpgvyu+VPnoF/7RPSw5YATgEVpt2j72wcCAeV5TwaE9ZGJUZWZn7v2CwSAj6CrMJEx8A=="],
 
-    "@buape/carbon": ["@buape/carbon@0.0.0-beta-20260706052415", "", { "dependencies": { "discord-api-types": "0.38.49" }, "peerDependencies": { "@discordjs/voice": "^0.19.2", "@types/bun": ">=1.3.0", "@types/node": ">=24.0.0" }, "optionalPeers": ["@discordjs/voice", "@types/bun", "@types/node"] }, "sha512-GmTEjuPjw63QIRLOtmb5DkmUKL38gnlHUc3Dri1/vDQQ1EWmgTj8UIC8Qzg9dDDEbETEXdBd08dmhae9ht556A=="],
+    "@buape/carbon": ["@buape/carbon@0.0.0-beta-20260708153607", "", { "dependencies": { "discord-api-types": "0.38.49" }, "peerDependencies": { "@discordjs/voice": "^0.19.2", "@types/bun": ">=1.3.0", "@types/node": ">=24.0.0" }, "optionalPeers": ["@discordjs/voice", "@types/bun", "@types/node"] }, "sha512-hdSvs6uNqcuCZQjxqbGCKYRXXF+ItAWTIccw1vkYwkLLzxuURJkDJk9mkpv5VM4PnGh4s8JYTQvAaU4SEhMadw=="],
 
     "@earendil-works/pi-agent-core": ["@earendil-works/pi-agent-core@0.80.3", "", { "dependencies": { "@earendil-works/pi-ai": "^0.80.3", "ignore": "7.0.5", "typebox": "1.1.38", "yaml": "2.9.0" } }, "sha512-3qw0/GeRQBU/nlGjDe5Yb7ePKTmoxefx2YxyKMFAviFUMXpFexBG/hS7mBtwFahFvzrrTPPoRT6sFIDjwoDWPQ=="],
 
