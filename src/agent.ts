@@ -360,7 +360,10 @@ ${content || "[no text content]"}
 			baseUrl: "http://localhost",
 			token: config.token,
 			disableDeployRoute: true,
-			runtimeProfile: "persistent"
+			runtimeProfile: "persistent",
+			eventQueue: {
+				listenerTimeout: 9999 * 60 * 1000
+			}
 		},
 		{
 			listeners: [new AssistantMessage()]
