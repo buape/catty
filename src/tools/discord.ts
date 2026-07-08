@@ -40,7 +40,19 @@ const commonSchema = Type.Object({
 	nickname: Type.Optional(Type.String()),
 	timeoutUntil: Type.Optional(Type.String()),
 	timeoutMinutes: Type.Optional(Type.Number()),
-	deleteMessageDays: Type.Optional(Type.Number())
+	deleteMessageDays: Type.Optional(Type.Number()),
+	channelData: Type.Optional(
+		Type.Record(Type.String(), Type.Any(), {
+			description:
+				"Raw Discord channel create/edit JSON body fields. Use Discord API snake_case keys."
+		})
+	),
+	roleData: Type.Optional(
+		Type.Record(Type.String(), Type.Any(), {
+			description:
+				"Raw Discord role create/edit JSON body fields. Use Discord API snake_case keys."
+		})
+	)
 })
 
 const discordSchema = Type.Union([
@@ -174,6 +186,14 @@ const discordSchema = Type.Union([
 			action: Type.Literal("create_channel"),
 			guildId: Type.String(),
 			name: Type.String()
+		})
+	]),
+	Type.Intersect([
+		commonSchema,
+		Type.Object({
+			action: Type.Literal("edit_role"),
+			guildId: Type.String(),
+			id: Type.String({ description: "Role ID" })
 		})
 	]),
 	Type.Intersect([
@@ -433,7 +453,42 @@ class CreateRoleAction extends DiscordAction {
 			Routes.guildRoles(this.required(this.params.guildId, "guildId")),
 			{
 				body: {
+					...this.params.roleData,
 					name: this.required(this.params.name, "name"),
+					...(this.params.color !== undefined
+						? { color: this.params.color }
+						: {}),
+					...(this.params.hoist !== undefined
+						? { hoist: this.params.hoist }
+						: {}),
+					...(this.params.mentionable !== undefined
+						? { mentionable: this.params.mentionable }
+						: {}),
+					...(this.params.permissions !== undefined
+						? { permissions: this.params.permissions }
+						: {})
+				}
+			}
+		)
+	}
+}
+
+class EditRoleAction extends DiscordAction {
+	async execute() {
+		return this.client.rest.patch(
+			Routes.guildRole(
+				this.required(this.params.guildId, "guildId"),
+				this.required(
+					this.params.id ?? this.params.roleId,
+					"id or roleId"
+				)
+			),
+			{
+				body: {
+					...this.params.roleData,
+					...(this.params.name !== undefined
+						? { name: this.params.name }
+						: {}),
 					...(this.params.color !== undefined
 						? { color: this.params.color }
 						: {}),
@@ -458,8 +513,12 @@ class CreateChannelAction extends DiscordAction {
 			Routes.guildChannels(this.required(this.params.guildId, "guildId")),
 			{
 				body: {
+					...this.params.channelData,
 					name: this.required(this.params.name, "name"),
-					type: this.params.channelType ?? 0,
+					type:
+						this.params.channelType ??
+						this.params.channelData?.type ??
+						0,
 					...(this.params.parentId
 						? { parent_id: this.params.parentId }
 						: {}),
@@ -481,6 +540,7 @@ class EditChannelAction extends DiscordAction {
 			Routes.channel(this.required(this.params.channelId, "channelId")),
 			{
 				body: {
+					...this.params.channelData,
 					...(this.params.name !== undefined
 						? { name: this.params.name }
 						: {}),
@@ -680,6 +740,7 @@ const createAction = (client: Client, params: DiscordParams) => {
 		return new UnpinMessageAction(client, params)
 	if (params.action === "create_role")
 		return new CreateRoleAction(client, params)
+	if (params.action === "edit_role") return new EditRoleAction(client, params)
 	if (params.action === "create_channel")
 		return new CreateChannelAction(client, params)
 	if (params.action === "edit_channel")
@@ -703,7 +764,7 @@ class DiscordTool extends Tool<typeof discordSchema> {
 	name = "discord"
 	label = "Discord"
 	description =
-		"Fetch Discord info, search messages, react/pin messages, create roles/channels, edit channels/permissions, manage member roles/nicknames, and timeout/kick/ban members."
+		"Fetch Discord info, search messages, react/pin messages, create/edit roles/channels, edit channel permissions, manage member roles/nicknames, and timeout/kick/ban members."
 	parameters = discordSchema
 
 	constructor(private getClient: () => Client) {
