@@ -1,9 +1,9 @@
 import {
 	existsSync,
+	lstatSync,
 	mkdirSync,
 	readdirSync,
 	readFileSync,
-	statSync,
 	writeFileSync
 } from "node:fs"
 import { homedir } from "node:os"
@@ -173,7 +173,7 @@ for (const path of ["memory", "memories", "Memory", "Memories"].map((name) =>
 	join(workspace, name)
 )) {
 	if (!existsSync(path)) continue
-	const stat = statSync(path)
+	const stat = lstatSync(path)
 	const key = `${stat.dev}:${stat.ino}`
 	if (!stat.isDirectory() || seenLegacyMemoryDirs.has(key)) continue
 	seenLegacyMemoryDirs.add(key)
