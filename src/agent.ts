@@ -20,6 +20,7 @@ import {
 	SettingsManager
 } from "@earendil-works/pi-coding-agent"
 import { config, workspace } from "./config"
+import { createReactionListeners } from "./listeners/reactions"
 import { cattySystemPrompt } from "./prompt"
 import { createDiscordTool } from "./tools/discord"
 
@@ -94,7 +95,99 @@ export async function startCatty() {
 	if (modelFallbackMessage) console.log(`[pi] ${modelFallbackMessage}`)
 	console.log(`[pi] session: ${session.sessionFile ?? session.sessionId}`)
 
-	let piQueue = Promise.resolve()
+	const piJobs: Array<{
+		run: () => Promise<void>
+		lowPriority: boolean
+		resolve: () => void
+		reject: (error: unknown) => void
+	}> = []
+	let piRunning = false
+	const runPiJobs = async () => {
+		if (piRunning) return
+		piRunning = true
+		try {
+			while (piJobs.length > 0) {
+				const normalIndex = piJobs.findIndex((job) => !job.lowPriority)
+				const [job] = piJobs.splice(
+					normalIndex === -1 ? 0 : normalIndex,
+					1
+				)
+				if (!job) continue
+				try {
+					await job.run()
+					job.resolve()
+				} catch (error) {
+					job.reject(error)
+				}
+			}
+		} finally {
+			piRunning = false
+		}
+	}
+	const enqueuePi = (
+		run: () => Promise<void>,
+		options?: { lowPriority?: boolean }
+	) =>
+		new Promise<void>((resolve, reject) => {
+			const lowPriority = options?.lowPriority === true
+			piJobs.push({
+				run,
+				lowPriority,
+				resolve,
+				reject
+			})
+			if (lowPriority) setTimeout(() => void runPiJobs(), 1500)
+			else void runPiJobs()
+		})
+
+	const allowedDiscordUser = async (
+		guildId: string | undefined,
+		channelId: string,
+		userId: string,
+		roleIds: string[]
+	) => {
+		const auth = config.auth ?? {}
+		let roles = roleIds
+		if (guildId && roles.length === 0) {
+			try {
+				roles = (await client.fetchMember(guildId, userId)).roles.map(
+					(role) => role.id
+				)
+			} catch {}
+		}
+
+		if (!guildId) {
+			return auth.users === undefined ? true : auth.users.includes(userId)
+		}
+		if (auth.guilds === undefined) return true
+
+		const guild = auth.guilds[guildId]
+		const channel =
+			guild?.channels === undefined
+				? undefined
+				: guild.channels[channelId]
+		const guildPrincipalAllowed = guild
+			? guild.users === undefined && guild.roles === undefined
+				? true
+				: (guild.users?.includes(userId) ?? false) ||
+					(guild.roles?.some((role: string) =>
+						roles.includes(role)
+					) ??
+						false)
+			: false
+		const channelPrincipalAllowed = channel
+			? channel.users === undefined && channel.roles === undefined
+				? true
+				: (channel.users?.includes(userId) ?? false) ||
+					(channel.roles?.some((role: string) =>
+						roles.includes(role)
+					) ??
+						false)
+			: guild?.channels === undefined
+		return (
+			Boolean(guild) && guildPrincipalAllowed && channelPrincipalAllowed
+		)
+	}
 
 	class AssistantMessage extends MessageCreateListener {
 		async handle(
@@ -116,45 +209,13 @@ export async function startCatty() {
 				referencedMessageId: data.rawMessage.referenced_message?.id
 			})
 
-			const auth = config.auth ?? {}
 			const guildId = data.guild?.id ?? data.guild_id
-			const roleIds = data.rawMember?.roles ?? []
-			let allowed = true
-
-			if (!guildId) {
-				allowed =
-					auth.users === undefined
-						? true
-						: auth.users.includes(data.author.id)
-			} else if (auth.guilds !== undefined) {
-				const guild = auth.guilds[guildId]
-				const channel =
-					guild?.channels === undefined
-						? undefined
-						: guild.channels[data.message.channelId]
-				const guildPrincipalAllowed = guild
-					? guild.users === undefined && guild.roles === undefined
-						? true
-						: (guild.users?.includes(data.author.id) ?? false) ||
-							(guild.roles?.some((role: string) =>
-								roleIds.includes(role)
-							) ??
-								false)
-					: false
-				const channelPrincipalAllowed = channel
-					? channel.users === undefined && channel.roles === undefined
-						? true
-						: (channel.users?.includes(data.author.id) ?? false) ||
-							(channel.roles?.some((role: string) =>
-								roleIds.includes(role)
-							) ??
-								false)
-					: guild?.channels === undefined
-				allowed =
-					Boolean(guild) &&
-					guildPrincipalAllowed &&
-					channelPrincipalAllowed
-			}
+			const allowed = await allowedDiscordUser(
+				guildId,
+				data.message.channelId,
+				data.author.id,
+				data.rawMember?.roles ?? []
+			)
 
 			if (!allowed) {
 				console.log(
@@ -296,7 +357,7 @@ ${content || "[no text content]"}
 			console.log("[pi] prompt queued for message", data.message.id)
 			console.log(`[pi] exact prompt:\n---\n${piPrompt}\n---`)
 
-			const job = piQueue.then(async () => {
+			const job = enqueuePi(async () => {
 				console.log("[pi] prompt started", data.message.id)
 				let text = ""
 				const unsubscribe = session.subscribe((event) => {
@@ -343,7 +404,6 @@ ${content || "[no text content]"}
 				}
 			})
 
-			piQueue = job.catch(() => {})
 			await job.catch(async (error) => {
 				console.error("[pi] error for message", data.message.id, error)
 				stopTyping()
@@ -358,6 +418,8 @@ ${content || "[no text content]"}
 		intents:
 			GatewayIntents.Guilds |
 			GatewayIntents.GuildMessages |
+			GatewayIntents.GuildMessageReactions |
+			GatewayIntents.DirectMessageReactions |
 			GatewayIntents.MessageContent
 	})
 
@@ -372,7 +434,15 @@ ${content || "[no text content]"}
 			}
 		},
 		{
-			listeners: [new AssistantMessage()]
+			listeners: [
+				new AssistantMessage(),
+				...createReactionListeners({
+					getClient: () => client,
+					session,
+					enqueuePi,
+					allowedDiscordUser
+				})
+			]
 		},
 		[gateway]
 	)
@@ -397,7 +467,7 @@ ${content || "[no text content]"}
 			console.log("[heartbeat] prompt queued")
 			console.log(`[heartbeat] exact prompt:\n---\n${piPrompt}\n---`)
 
-			const job = piQueue.then(async () => {
+			const job = enqueuePi(async () => {
 				console.log("[heartbeat] prompt started")
 				let text = ""
 				const unsubscribe = session.subscribe((event) => {
@@ -431,7 +501,6 @@ ${content || "[no text content]"}
 				)
 			})
 
-			piQueue = job.catch(() => {})
 			job.catch((error) => console.error("[heartbeat] error", error))
 		},
 		(config.heartbeat?.intervalMinutes ?? 60) * 60 * 1000
