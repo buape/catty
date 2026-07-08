@@ -6,13 +6,12 @@ Default path:
 ~/.catty/config.toml
 ```
 
-On first launch, Catty writes `~/.catty/config.toml` from `docs/templates/config.toml`, creates the workspace Markdown templates, prints the created paths, then exits. Fill out the files and restart Catty.
+On first launch, Catty writes `~/.catty/config.toml` from `docs/templates/config.toml`, creates the workspace QMD memory file and native pi workspace directories, prints the created paths, then exits. Fill out the files and restart Catty.
 
 First-launch workspace files:
 
 - `AGENTS.md`
-- `USER.md`
-- `ME.md`
+- `MEMORY.qmd`
 - `skills/`
 - `.pi/extensions/`
 
@@ -79,8 +78,8 @@ Heartbeat is disabled unless `heartbeat.enabled = true` is present in config.
 Removed/non-configurable values:
 
 - `discord.baseUrl` is not configurable. Carbon uses `http://localhost`.
-- `discord.clientId` is not configurable. Carbon derives it from the bot token.
-- `discord.publicKey` is not configurable. Carbon fetches it when needed.
+- `discord.clientId` is not configurable. Catty fetches the app ID from Discord using the bot token.
+- `discord.publicKey` is not configurable. Catty fetches the public key from Discord using the bot token.
 - `discord.port` is not configurable. The Bun server listens on `3000`.
 - `discord.deploySecret` is not used because the deploy route is disabled.
 - `discord.totalShards` is not used because Catty uses Carbon's `GatewayPlugin`, not `ShardingPlugin`.
@@ -89,6 +88,7 @@ Removed/non-configurable values:
 
 - Config path: `~/.catty/config.toml`
 - Workspace: `~/.catty/workspace`
+- Memory file: `~/.catty/workspace/MEMORY.qmd`
 - Carbon base URL: `http://localhost`
 - HTTP port: `3000` (not configurable)
 - Response mode: `all`
@@ -175,3 +175,15 @@ enabled = true
 ```
 
 When enabled, Catty reads the configured file relative to the workspace, skips missing/empty files, and logs the exact heartbeat prompt and final pi response.
+
+## Memory
+
+Catty always uses one canonical memory file:
+
+```text
+~/.catty/workspace/MEMORY.qmd
+```
+
+Catty creates it automatically when missing and loads it into pi as a native context file. There is no memory-path setting. Durable user context, preferences, reusable notes, and agent personality belong in `MEMORY.qmd`; workspace operating rules belong in `AGENTS.md`.
+
+On upgrade, Catty preserves old files and imports existing `USER.md`, `ME.md`, and Markdown/QMD/text files under `memory/`, `memories/`, `Memory/`, or `Memories/` into `MEMORY.qmd` once using migration markers.

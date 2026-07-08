@@ -19,7 +19,7 @@ import {
 	SessionManager,
 	SettingsManager
 } from "@earendil-works/pi-coding-agent"
-import { config, workspace } from "./config"
+import { config, memoryPath, workspace } from "./config"
 import { createReactionListeners } from "./listeners/reactions"
 import { cattySystemPrompt } from "./prompt"
 import { createDiscordTool } from "./tools/discord"
@@ -29,20 +29,14 @@ export async function startCatty() {
 		/^~(?=$|\/)/,
 		homedir()
 	)
-	const userPath = join(workspace, "USER.md")
-	const mePath = join(workspace, "ME.md")
 	const heartbeatPath = join(
 		workspace,
 		config.heartbeat?.file ?? "HEARTBEAT.md"
 	)
-	const systemPrompt = [
-		cattySystemPrompt,
-		existsSync(userPath)
-			? `\n\n# USER.md\n${readFileSync(userPath, "utf8")}`
-			: "",
-		existsSync(mePath) ? `\n\n# ME.md\n${readFileSync(mePath, "utf8")}` : ""
-	].join("")
-	console.log(`[catty] system prompt sent to pi:\n---\n${systemPrompt}\n---`)
+	console.log(`[catty] QMD memory loaded into pi context: ${memoryPath}`)
+	console.log(
+		`[catty] system prompt sent to pi:\n---\n${cattySystemPrompt}\n---`
+	)
 
 	const authStorage = AuthStorage.create(join(agentDir, "auth.json"))
 
@@ -72,10 +66,35 @@ export async function startCatty() {
 		settingsManager,
 		additionalSkillPaths: [join(workspace, "skills")],
 		additionalExtensionPaths: [join(workspace, ".pi/extensions")],
-		systemPromptOverride: () => systemPrompt,
+		agentsFilesOverride: (current) => ({
+			agentsFiles: [
+				...current.agentsFiles.filter(
+					(file) => file.path !== memoryPath
+				),
+				{ path: memoryPath, content: readFileSync(memoryPath, "utf8") }
+			]
+		}),
+		systemPromptOverride: () => cattySystemPrompt,
 		appendSystemPromptOverride: () => []
 	})
 	await resourceLoader.reload()
+
+	const applicationResponse = await fetch(
+		"https://discord.com/api/v10/oauth2/applications/@me",
+		{ headers: { Authorization: `Bot ${config.token}` } }
+	)
+	if (!applicationResponse.ok)
+		throw new Error(
+			`Could not fetch Discord application info: HTTP ${applicationResponse.status}`
+		)
+	const application = await applicationResponse.json()
+	if (
+		!application ||
+		typeof application !== "object" ||
+		!("id" in application) ||
+		!("verify_key" in application)
+	)
+		throw new Error("Discord application info missing id or public key")
 
 	let client: Client
 	const discordTool = createDiscordTool(() => client)
@@ -194,7 +213,7 @@ export async function startCatty() {
 			data: ListenerEventData["MESSAGE_CREATE"],
 			client: Client
 		) {
-			if (data.author.id === client.clientId) {
+			if (data.author.id === client.options.clientId) {
 				return
 			}
 
@@ -246,11 +265,12 @@ export async function startCatty() {
 
 			if (mode === "mention-or-reply") {
 				const mentioned = data.rawMessage.mentions?.some(
-					(user: { id: string }) => user.id === client.clientId
+					(user: { id: string }) =>
+						user.id === client.options.clientId
 				)
 				const replied =
 					data.rawMessage.referenced_message?.author?.id ===
-					client.clientId
+					client.options.clientId
 				if (!mentioned && !replied) {
 					console.log(
 						"[discord] ignored not mention/reply",
@@ -259,7 +279,10 @@ export async function startCatty() {
 					return
 				}
 				content = content
-					.replace(new RegExp(`<@!?${client.clientId}>`, "g"), "")
+					.replace(
+						new RegExp(`<@!?${client.options.clientId}>`, "g"),
+						""
+					)
 					.trim()
 			}
 
@@ -426,6 +449,8 @@ ${content || "[no text content]"}
 	client = new Client(
 		{
 			baseUrl: "http://localhost",
+			clientId: String(application.id),
+			publicKey: String(application.verify_key),
 			token: config.token,
 			disableDeployRoute: true,
 			runtimeProfile: "persistent",

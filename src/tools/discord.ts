@@ -291,10 +291,7 @@ abstract class DiscordAction {
 
 class FetchUserAction extends DiscordAction {
 	execute() {
-		return this.client.fetchUser(
-			this.required(this.params.id, "id"),
-			this.params.force
-		)
+		return this.client.fetchUser(this.required(this.params.id, "id"))
 	}
 }
 
@@ -304,8 +301,7 @@ class FetchGuildAction extends DiscordAction {
 			this.required(
 				this.params.id ?? this.params.guildId,
 				"id or guildId"
-			),
-			this.params.force
+			)
 		)
 	}
 }
@@ -316,8 +312,7 @@ class FetchChannelAction extends DiscordAction {
 			this.required(
 				this.params.id ?? this.params.channelId,
 				"id or channelId"
-			),
-			this.params.force
+			)
 		)
 	}
 }
@@ -326,8 +321,7 @@ class FetchRoleAction extends DiscordAction {
 	execute() {
 		return this.client.fetchRole(
 			this.required(this.params.guildId, "guildId"),
-			this.required(this.params.id ?? this.params.roleId, "id or roleId"),
-			this.params.force
+			this.required(this.params.id ?? this.params.roleId, "id or roleId")
 		)
 	}
 }
@@ -339,8 +333,7 @@ class FetchMemberAction extends DiscordAction {
 			this.required(
 				this.params.id ?? this.params.memberId,
 				"id or memberId"
-			),
-			this.params.force
+			)
 		)
 	}
 }
@@ -352,8 +345,7 @@ class FetchMessageAction extends DiscordAction {
 			this.required(
 				this.params.id ?? this.params.messageId,
 				"id or messageId"
-			),
-			this.params.force
+			)
 		)
 	}
 }
@@ -399,11 +391,16 @@ class ListScheduledEventsAction extends DiscordAction {
 
 class SearchMessagesAction extends DiscordAction {
 	async execute() {
-		return (await this.fetchGuild()).searchMessages({
-			limit: Math.min(this.params.limit ?? 10, 25),
-			channel_id: [this.required(this.params.channelId, "channelId")],
-			...(this.params.query ? { content: this.params.query } : {})
-		})
+		return this.client.rest.get(
+			Routes.guildMessagesSearch(
+				this.required(this.params.guildId, "guildId")
+			),
+			{
+				limit: Math.min(this.params.limit ?? 10, 25),
+				channel_id: this.required(this.params.channelId, "channelId"),
+				...(this.params.query ? { content: this.params.query } : {})
+			}
+		)
 	}
 }
 
@@ -426,8 +423,7 @@ class PinMessageAction extends DiscordAction {
 		await (
 			await this.client.fetchMessage(
 				this.required(this.params.channelId, "channelId"),
-				this.required(this.params.id ?? this.params.messageId, "id"),
-				this.params.force
+				this.required(this.params.id ?? this.params.messageId, "id")
 			)
 		).pin()
 		return { ok: true }
@@ -439,8 +435,7 @@ class UnpinMessageAction extends DiscordAction {
 		await (
 			await this.client.fetchMessage(
 				this.required(this.params.channelId, "channelId"),
-				this.required(this.params.id ?? this.params.messageId, "id"),
-				this.params.force
+				this.required(this.params.id ?? this.params.messageId, "id")
 			)
 		).unpin()
 		return { ok: true }
@@ -589,8 +584,7 @@ class AddMemberRoleAction extends DiscordAction {
 				this.required(
 					this.params.memberId ?? this.params.id,
 					"memberId"
-				),
-				this.params.force
+				)
 			)
 		).addRole(
 			this.required(this.params.roleId, "roleId"),
@@ -608,8 +602,7 @@ class RemoveMemberRoleAction extends DiscordAction {
 				this.required(
 					this.params.memberId ?? this.params.id,
 					"memberId"
-				),
-				this.params.force
+				)
 			)
 		).removeRole(
 			this.required(this.params.roleId, "roleId"),
@@ -627,8 +620,7 @@ class SetMemberNicknameAction extends DiscordAction {
 				this.required(
 					this.params.memberId ?? this.params.id,
 					"memberId"
-				),
-				this.params.force
+				)
 			)
 		).setNickname(this.params.nickname ?? null, this.params.reason)
 		return { ok: true }
@@ -657,8 +649,7 @@ class TimeoutMemberAction extends DiscordAction {
 				this.required(
 					this.params.memberId ?? this.params.id,
 					"memberId"
-				),
-				this.params.force
+				)
 			)
 		).timeoutMember(until, this.params.reason)
 		return { ok: true, until }
@@ -673,8 +664,7 @@ class KickMemberAction extends DiscordAction {
 				this.required(
 					this.params.memberId ?? this.params.id,
 					"memberId"
-				),
-				this.params.force
+				)
 			)
 		).kick(this.params.reason)
 		return { ok: true }
@@ -689,8 +679,7 @@ class BanMemberAction extends DiscordAction {
 				this.required(
 					this.params.memberId ?? this.params.id,
 					"memberId"
-				),
-				this.params.force
+				)
 			)
 		).ban({
 			reason: this.params.reason,

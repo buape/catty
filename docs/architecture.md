@@ -2,12 +2,12 @@
 
 KISS target: one Discord connector, one pi session, one TOML config file.
 
-Catty is the project/harness. The running assistant is an agent inside Catty; its name and personality live in workspace `ME.md`.
+Catty is the project/harness. The running assistant is an agent inside Catty; durable memory, user context, name, and personality live in workspace `MEMORY.qmd`.
 
 ## Runtime flow
 
 1. Load `~/.catty/config.toml` unless `--config` is passed.
-2. If this is first launch, write the example config plus workspace templates, print the paths, and exit.
+2. If this is first launch, write the example config plus workspace `AGENTS.md` and `MEMORY.qmd`, print the paths, and exit.
 3. Run config migrations when the embedded config version increases.
 4. Create one pi `AgentSession` for the configured workspace.
 5. Start one Carbon `Client` with a `MessageCreateListener`.
@@ -30,7 +30,7 @@ No maps keyed by channel, user, guild, thread, or role. No session pools. No ses
 
 ## Config
 
-The example config is written automatically on first launch, along with workspace Markdown templates. Catty exits immediately so the user can fill them out before the first real run.
+The example config is written automatically on first launch, along with `AGENTS.md` and the canonical workspace `MEMORY.qmd`. Catty exits immediately so the user can fill them out before the first real run.
 
 Config contains a `version = 1` schema marker. `src/config.ts` has a hardcoded config version and a simple text migration table. If the code version increases, migrations run before TOML parsing and update the version line.
 
@@ -38,11 +38,10 @@ Full config reference lives in `docs/config.md`.
 
 ## Prompting
 
-Catty's harness prompt is embedded in `src/prompt.ts`. End-user agent identity files live in the workspace:
+Catty's harness prompt is embedded in `src/prompt.ts`. End-user memory and resources live in the workspace:
 
 - `AGENTS.md`
-- `USER.md`
-- `ME.md`
+- `MEMORY.qmd`
 - `skills/`
 - `.pi/extensions/`
 
@@ -50,7 +49,7 @@ Catty's harness prompt is embedded in `src/prompt.ts`. End-user agent identity f
 
 Use the SDK:
 
-- `DefaultResourceLoader({ cwd: workspace, agentDir, systemPromptOverride })`
+- `DefaultResourceLoader({ cwd: workspace, agentDir, systemPromptOverride, agentsFilesOverride })`
 - `SessionManager.create(workspace)`
 - `createAgentSession({ cwd: workspace, resourceLoader, sessionManager })`
 

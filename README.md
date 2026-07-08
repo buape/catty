@@ -2,7 +2,7 @@
 
 KISS personal assistant agent harness for Discord.
 
-Catty is the project/harness. The actual agent name and personality live in the end-user workspace `ME.md`.
+Catty is the project/harness. The actual durable memory, agent name, and personality live in the end-user workspace `MEMORY.qmd`.
 
 ## Install
 
@@ -12,7 +12,7 @@ brew install buape/tap/catty
 
 ## First launch
 
-Run Catty once to create the default config and workspace templates, then exit:
+Run Catty once to create the default config and workspace memory, then exit:
 
 ```bash
 catty
@@ -22,9 +22,9 @@ Catty creates:
 
 - Config: `~/.catty/config.toml`
 - Workspace: `~/.catty/workspace`
-- Workspace files: `AGENTS.md`, `USER.md`, `ME.md`
+- Workspace files: `AGENTS.md`, `MEMORY.qmd`
 
-Fill out the generated config and Markdown files, then restart Catty.
+Fill out the generated config and QMD memory file, then restart Catty.
 
 At minimum, set the Discord bot token:
 
@@ -67,9 +67,9 @@ catty --config /path/to/config.toml
 
 Created under `~/.catty/workspace` by default:
 
-- `AGENTS.md` — workspace guidance.
-- `USER.md` — primary user context.
-- `ME.md` — agent name and personality.
+- `AGENTS.md` — workspace operating rules.
+- `MEMORY.qmd` — durable user context, preferences, reusable notes, agent name, and personality.
+- Legacy `USER.md`, `ME.md`, and `memory/` or `memories/` Markdown/QMD/text files are imported into `MEMORY.qmd` once if present.
 - `HEARTBEAT.md` — optional heartbeat prompt source when enabled.
 - `skills/` — pi skills.
 - `.pi/extensions/` — pi extensions.
