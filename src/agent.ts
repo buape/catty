@@ -64,6 +64,8 @@ export async function startCatty() {
 	const resourceLoader = new DefaultResourceLoader({
 		cwd: workspace,
 		agentDir,
+		additionalSkillPaths: [join(workspace, "skills")],
+		additionalExtensionPaths: [join(workspace, "extensions")],
 		systemPromptOverride: () => systemPrompt,
 		appendSystemPromptOverride: () => []
 	})

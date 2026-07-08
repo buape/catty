@@ -31,4 +31,4 @@ End-user workspace files, created under `~/.catty/workspace` by default:
 - `AGENTS.md`: workspace guidance.
 - `USER.md`: primary user context.
 - `ME.md`: agent name/personality.
-- `.pi/skills/` and `.pi/extensions/`: reusable capabilities.
+- `skills/` and `extensions/`: reusable capabilities.

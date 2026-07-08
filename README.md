@@ -71,8 +71,8 @@ Created under `~/.catty/workspace` by default:
 - `USER.md` — primary user context.
 - `ME.md` — agent name and personality.
 - `HEARTBEAT.md` — optional heartbeat prompt source when enabled.
-- `.pi/skills/` — pi skills.
-- `.pi/extensions/` — pi extensions.
+- `skills/` — pi skills.
+- `extensions/` — pi extensions.
 
 Catty's own harness system prompt is embedded in code at `src/prompt.ts`.
 

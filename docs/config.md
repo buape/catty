@@ -13,8 +13,8 @@ First-launch workspace files:
 - `AGENTS.md`
 - `USER.md`
 - `ME.md`
-- `.pi/skills/`
-- `.pi/extensions/`
+- `skills/`
+- `extensions/`
 
 ## Minimal required config
 
