@@ -14,14 +14,13 @@ import {
 	AuthStorage,
 	createAgentSession,
 	DefaultResourceLoader,
-	defineTool,
 	getAgentDir,
 	ModelRegistry,
 	SessionManager
 } from "@earendil-works/pi-coding-agent"
-import { Type } from "typebox"
 import { config, workspace } from "./config"
 import { cattySystemPrompt } from "./prompt"
+import { createDiscordTool } from "./tools/discord"
 
 export async function startCatty() {
 	const agentDir = String(config.pi?.agentDir ?? getAgentDir()).replace(
@@ -71,189 +70,7 @@ export async function startCatty() {
 	await resourceLoader.reload()
 
 	let client: Client
-	const discordTool = defineTool({
-		name: "discord",
-		label: "Discord",
-		description:
-			"Fetch Discord user/guild/channel/role/member/message/webhook info, list guild channels/roles/members/events, or search messages in a channel.",
-		parameters: Type.Object({
-			action: Type.Union([
-				Type.Literal("fetch_user"),
-				Type.Literal("fetch_guild"),
-				Type.Literal("fetch_channel"),
-				Type.Literal("fetch_role"),
-				Type.Literal("fetch_member"),
-				Type.Literal("fetch_message"),
-				Type.Literal("fetch_webhook"),
-				Type.Literal("list_channels"),
-				Type.Literal("list_roles"),
-				Type.Literal("list_members"),
-				Type.Literal("list_scheduled_events"),
-				Type.Literal("search_messages")
-			]),
-			id: Type.Optional(
-				Type.String({
-					description: "Primary ID for user/guild/channel/webhook"
-				})
-			),
-			guildId: Type.Optional(Type.String()),
-			channelId: Type.Optional(Type.String()),
-			roleId: Type.Optional(Type.String()),
-			memberId: Type.Optional(Type.String()),
-			messageId: Type.Optional(Type.String()),
-			webhookToken: Type.Optional(Type.String()),
-			query: Type.Optional(
-				Type.String({ description: "Message search text" })
-			),
-			limit: Type.Optional(
-				Type.Number({ description: "Result limit, defaults to 10" })
-			),
-			force: Type.Optional(Type.Boolean())
-		}),
-		execute: async (toolCallId, params) => {
-			console.log("[discord] tool started", {
-				id: toolCallId,
-				action: params.action,
-				idParam: params.id,
-				guildId: params.guildId,
-				channelId: params.channelId,
-				roleId: params.roleId,
-				memberId: params.memberId,
-				messageId: params.messageId,
-				query: params.query,
-				limit: params.limit,
-				force: params.force
-			})
-			const raw = (value: unknown): unknown => {
-				if (Array.isArray(value)) return value.map(raw)
-				if (value && typeof value === "object" && "rawData" in value)
-					return raw((value as { rawData: unknown }).rawData)
-				return value
-			}
-			const required = (value: string | undefined, name: string) => {
-				if (!value) throw new Error(`${name} is required`)
-				return value
-			}
-
-			try {
-				let result: unknown
-				if (params.action === "fetch_user") {
-					result = await client.fetchUser(
-						required(params.id, "id"),
-						params.force
-					)
-				} else if (params.action === "fetch_guild") {
-					result = await client.fetchGuild(
-						required(params.id ?? params.guildId, "id or guildId"),
-						params.force
-					)
-				} else if (params.action === "fetch_channel") {
-					result = await client.fetchChannel(
-						required(
-							params.id ?? params.channelId,
-							"id or channelId"
-						),
-						params.force
-					)
-				} else if (params.action === "fetch_role") {
-					result = await client.fetchRole(
-						required(params.guildId, "guildId"),
-						required(params.id ?? params.roleId, "id or roleId"),
-						params.force
-					)
-				} else if (params.action === "fetch_member") {
-					result = await client.fetchMember(
-						required(params.guildId, "guildId"),
-						required(
-							params.id ?? params.memberId,
-							"id or memberId"
-						),
-						params.force
-					)
-				} else if (params.action === "fetch_message") {
-					result = await client.fetchMessage(
-						required(params.channelId, "channelId"),
-						required(
-							params.id ?? params.messageId,
-							"id or messageId"
-						),
-						params.force
-					)
-				} else if (params.action === "fetch_webhook") {
-					result = await client.fetchWebhook(
-						params.webhookToken
-							? {
-									id: required(params.id, "id"),
-									token: params.webhookToken
-								}
-							: required(params.id, "id")
-					)
-				} else if (params.action === "list_channels") {
-					result = await (
-						await client.fetchGuild(
-							required(params.guildId, "guildId")
-						)
-					).fetchChannels()
-				} else if (params.action === "list_roles") {
-					result = await (
-						await client.fetchGuild(
-							required(params.guildId, "guildId")
-						)
-					).fetchRoles()
-				} else if (params.action === "list_members") {
-					result = await (
-						await client.fetchGuild(
-							required(params.guildId, "guildId")
-						)
-					).fetchMembers(Math.min(params.limit ?? 10, 1000))
-				} else if (params.action === "list_scheduled_events") {
-					result = await (
-						await client.fetchGuild(
-							required(params.guildId, "guildId")
-						)
-					).fetchScheduledEvents(true)
-				} else {
-					result = await (
-						await client.fetchGuild(
-							required(params.guildId, "guildId")
-						)
-					).searchMessages({
-						limit: Math.min(params.limit ?? 10, 25),
-						channel_id: [required(params.channelId, "channelId")],
-						...(params.query ? { content: params.query } : {})
-					})
-				}
-
-				const rawResult = raw(result)
-				const text = JSON.stringify(rawResult, null, 2).slice(0, 20000)
-				console.log("[discord] tool finished", {
-					id: toolCallId,
-					action: params.action,
-					result: Array.isArray(rawResult)
-						? `${rawResult.length} items`
-						: typeof rawResult,
-					bytes: text.length
-				})
-
-				return {
-					content: [
-						{
-							type: "text",
-							text
-						}
-					],
-					details: {}
-				}
-			} catch (error) {
-				console.error("[discord] tool error", {
-					id: toolCallId,
-					action: params.action,
-					error
-				})
-				throw error
-			}
-		}
-	})
+	const discordTool = createDiscordTool(() => client)
 
 	const { session, modelFallbackMessage } = await createAgentSession({
 		cwd: workspace,
