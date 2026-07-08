@@ -20,7 +20,27 @@ const commonSchema = Type.Object({
 			description:
 				"Emoji to react with. Unicode emoji, or custom emoji formatted as name:id."
 		})
-	)
+	),
+	name: Type.Optional(Type.String()),
+	reason: Type.Optional(Type.String()),
+	color: Type.Optional(Type.Number()),
+	hoist: Type.Optional(Type.Boolean()),
+	mentionable: Type.Optional(Type.Boolean()),
+	permissions: Type.Optional(Type.String()),
+	channelType: Type.Optional(Type.Number()),
+	parentId: Type.Optional(Type.String()),
+	topic: Type.Optional(Type.String()),
+	nsfw: Type.Optional(Type.Boolean()),
+	permissionTargetId: Type.Optional(Type.String()),
+	permissionTargetType: Type.Optional(
+		Type.Union([Type.Literal("role"), Type.Literal("member")])
+	),
+	allow: Type.Optional(Type.String()),
+	deny: Type.Optional(Type.String()),
+	nickname: Type.Optional(Type.String()),
+	timeoutUntil: Type.Optional(Type.String()),
+	timeoutMinutes: Type.Optional(Type.Number()),
+	deleteMessageDays: Type.Optional(Type.Number())
 })
 
 const discordSchema = Type.Union([
@@ -138,6 +158,91 @@ const discordSchema = Type.Union([
 			action: Type.Literal("unpin_message"),
 			channelId: Type.String(),
 			id: Type.String({ description: "Message ID" })
+		})
+	]),
+	Type.Intersect([
+		commonSchema,
+		Type.Object({
+			action: Type.Literal("create_role"),
+			guildId: Type.String(),
+			name: Type.String()
+		})
+	]),
+	Type.Intersect([
+		commonSchema,
+		Type.Object({
+			action: Type.Literal("create_channel"),
+			guildId: Type.String(),
+			name: Type.String()
+		})
+	]),
+	Type.Intersect([
+		commonSchema,
+		Type.Object({
+			action: Type.Literal("edit_channel"),
+			channelId: Type.String()
+		})
+	]),
+	Type.Intersect([
+		commonSchema,
+		Type.Object({
+			action: Type.Literal("edit_channel_permissions"),
+			channelId: Type.String(),
+			permissionTargetId: Type.String(),
+			permissionTargetType: Type.Union([
+				Type.Literal("role"),
+				Type.Literal("member")
+			])
+		})
+	]),
+	Type.Intersect([
+		commonSchema,
+		Type.Object({
+			action: Type.Literal("add_member_role"),
+			guildId: Type.String(),
+			memberId: Type.String(),
+			roleId: Type.String()
+		})
+	]),
+	Type.Intersect([
+		commonSchema,
+		Type.Object({
+			action: Type.Literal("remove_member_role"),
+			guildId: Type.String(),
+			memberId: Type.String(),
+			roleId: Type.String()
+		})
+	]),
+	Type.Intersect([
+		commonSchema,
+		Type.Object({
+			action: Type.Literal("set_member_nickname"),
+			guildId: Type.String(),
+			memberId: Type.String()
+		})
+	]),
+	Type.Intersect([
+		commonSchema,
+		Type.Object({
+			action: Type.Literal("timeout_member"),
+			guildId: Type.String(),
+			memberId: Type.String()
+		})
+	]),
+	Type.Intersect([
+		commonSchema,
+		Type.Object({
+			action: Type.Literal("kick_member"),
+			guildId: Type.String(),
+			memberId: Type.String()
+		})
+	]),
+	Type.Intersect([
+		commonSchema,
+		Type.Object({
+			action: Type.Literal("ban_member"),
+			guildId: Type.String(),
+			memberId: Type.String()
 		})
 	])
 ])
@@ -322,6 +427,219 @@ class UnpinMessageAction extends DiscordAction {
 	}
 }
 
+class CreateRoleAction extends DiscordAction {
+	async execute() {
+		return this.client.rest.post(
+			Routes.guildRoles(this.required(this.params.guildId, "guildId")),
+			{
+				body: {
+					name: this.required(this.params.name, "name"),
+					...(this.params.color !== undefined
+						? { color: this.params.color }
+						: {}),
+					...(this.params.hoist !== undefined
+						? { hoist: this.params.hoist }
+						: {}),
+					...(this.params.mentionable !== undefined
+						? { mentionable: this.params.mentionable }
+						: {}),
+					...(this.params.permissions !== undefined
+						? { permissions: this.params.permissions }
+						: {})
+				}
+			}
+		)
+	}
+}
+
+class CreateChannelAction extends DiscordAction {
+	async execute() {
+		return this.client.rest.post(
+			Routes.guildChannels(this.required(this.params.guildId, "guildId")),
+			{
+				body: {
+					name: this.required(this.params.name, "name"),
+					type: this.params.channelType ?? 0,
+					...(this.params.parentId
+						? { parent_id: this.params.parentId }
+						: {}),
+					...(this.params.topic !== undefined
+						? { topic: this.params.topic }
+						: {}),
+					...(this.params.nsfw !== undefined
+						? { nsfw: this.params.nsfw }
+						: {})
+				}
+			}
+		)
+	}
+}
+
+class EditChannelAction extends DiscordAction {
+	async execute() {
+		return this.client.rest.patch(
+			Routes.channel(this.required(this.params.channelId, "channelId")),
+			{
+				body: {
+					...(this.params.name !== undefined
+						? { name: this.params.name }
+						: {}),
+					...(this.params.parentId !== undefined
+						? { parent_id: this.params.parentId }
+						: {}),
+					...(this.params.topic !== undefined
+						? { topic: this.params.topic }
+						: {}),
+					...(this.params.nsfw !== undefined
+						? { nsfw: this.params.nsfw }
+						: {})
+				}
+			}
+		)
+	}
+}
+
+class EditChannelPermissionsAction extends DiscordAction {
+	async execute() {
+		await this.client.rest.put(
+			Routes.channelPermission(
+				this.required(this.params.channelId, "channelId"),
+				this.required(
+					this.params.permissionTargetId,
+					"permissionTargetId"
+				)
+			),
+			{
+				body: {
+					type: this.params.permissionTargetType === "member" ? 1 : 0,
+					allow: this.params.allow ?? "0",
+					deny: this.params.deny ?? "0"
+				}
+			}
+		)
+		return { ok: true }
+	}
+}
+
+class AddMemberRoleAction extends DiscordAction {
+	async execute() {
+		await (
+			await this.client.fetchMember(
+				this.required(this.params.guildId, "guildId"),
+				this.required(
+					this.params.memberId ?? this.params.id,
+					"memberId"
+				),
+				this.params.force
+			)
+		).addRole(
+			this.required(this.params.roleId, "roleId"),
+			this.params.reason
+		)
+		return { ok: true }
+	}
+}
+
+class RemoveMemberRoleAction extends DiscordAction {
+	async execute() {
+		await (
+			await this.client.fetchMember(
+				this.required(this.params.guildId, "guildId"),
+				this.required(
+					this.params.memberId ?? this.params.id,
+					"memberId"
+				),
+				this.params.force
+			)
+		).removeRole(
+			this.required(this.params.roleId, "roleId"),
+			this.params.reason
+		)
+		return { ok: true }
+	}
+}
+
+class SetMemberNicknameAction extends DiscordAction {
+	async execute() {
+		await (
+			await this.client.fetchMember(
+				this.required(this.params.guildId, "guildId"),
+				this.required(
+					this.params.memberId ?? this.params.id,
+					"memberId"
+				),
+				this.params.force
+			)
+		).setNickname(this.params.nickname ?? null, this.params.reason)
+		return { ok: true }
+	}
+}
+
+class TimeoutMemberAction extends DiscordAction {
+	async execute() {
+		const minutes = this.params.timeoutMinutes
+		const until =
+			this.params.timeoutUntil ??
+			new Date(
+				Date.now() +
+					Number(
+						this.required(
+							minutes?.toString(),
+							"timeoutUntil or timeoutMinutes"
+						)
+					) *
+						60 *
+						1000
+			).toISOString()
+		await (
+			await this.client.fetchMember(
+				this.required(this.params.guildId, "guildId"),
+				this.required(
+					this.params.memberId ?? this.params.id,
+					"memberId"
+				),
+				this.params.force
+			)
+		).timeoutMember(until, this.params.reason)
+		return { ok: true, until }
+	}
+}
+
+class KickMemberAction extends DiscordAction {
+	async execute() {
+		await (
+			await this.client.fetchMember(
+				this.required(this.params.guildId, "guildId"),
+				this.required(
+					this.params.memberId ?? this.params.id,
+					"memberId"
+				),
+				this.params.force
+			)
+		).kick(this.params.reason)
+		return { ok: true }
+	}
+}
+
+class BanMemberAction extends DiscordAction {
+	async execute() {
+		await (
+			await this.client.fetchMember(
+				this.required(this.params.guildId, "guildId"),
+				this.required(
+					this.params.memberId ?? this.params.id,
+					"memberId"
+				),
+				this.params.force
+			)
+		).ban({
+			reason: this.params.reason,
+			deleteMessageDays: this.params.deleteMessageDays
+		})
+		return { ok: true }
+	}
+}
+
 const raw = (value: unknown): unknown => {
 	if (Array.isArray(value)) return value.map(raw)
 	if (value && typeof value === "object" && "rawData" in value)
@@ -358,14 +676,34 @@ const createAction = (client: Client, params: DiscordParams) => {
 		return new ReactMessageAction(client, params)
 	if (params.action === "pin_message")
 		return new PinMessageAction(client, params)
-	return new UnpinMessageAction(client, params)
+	if (params.action === "unpin_message")
+		return new UnpinMessageAction(client, params)
+	if (params.action === "create_role")
+		return new CreateRoleAction(client, params)
+	if (params.action === "create_channel")
+		return new CreateChannelAction(client, params)
+	if (params.action === "edit_channel")
+		return new EditChannelAction(client, params)
+	if (params.action === "edit_channel_permissions")
+		return new EditChannelPermissionsAction(client, params)
+	if (params.action === "add_member_role")
+		return new AddMemberRoleAction(client, params)
+	if (params.action === "remove_member_role")
+		return new RemoveMemberRoleAction(client, params)
+	if (params.action === "set_member_nickname")
+		return new SetMemberNicknameAction(client, params)
+	if (params.action === "timeout_member")
+		return new TimeoutMemberAction(client, params)
+	if (params.action === "kick_member")
+		return new KickMemberAction(client, params)
+	return new BanMemberAction(client, params)
 }
 
 class DiscordTool extends Tool<typeof discordSchema> {
 	name = "discord"
 	label = "Discord"
 	description =
-		"Fetch Discord user/guild/channel/role/member/message/webhook info, list guild channels/roles/members/events, search messages in a channel, react to messages, or pin/unpin messages."
+		"Fetch Discord info, search messages, react/pin messages, create roles/channels, edit channels/permissions, manage member roles/nicknames, and timeout/kick/ban members."
 	parameters = discordSchema
 
 	constructor(private getClient: () => Client) {
@@ -383,6 +721,8 @@ class DiscordTool extends Tool<typeof discordSchema> {
 			memberId: params.memberId,
 			messageId: params.messageId,
 			emoji: params.emoji,
+			name: params.name,
+			permissionTargetId: params.permissionTargetId,
 			query: params.query,
 			limit: params.limit,
 			force: params.force

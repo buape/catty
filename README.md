@@ -72,7 +72,7 @@ Created under `~/.catty/workspace` by default:
 - `ME.md` — agent name and personality.
 - `HEARTBEAT.md` — optional heartbeat prompt source when enabled.
 - `skills/` — pi skills.
-- `extensions/` — pi extensions.
+- `.pi/extensions/` — pi extensions.
 
 Catty's own harness system prompt is embedded in code at `src/prompt.ts`.
 

@@ -14,7 +14,7 @@ First-launch workspace files:
 - `USER.md`
 - `ME.md`
 - `skills/`
-- `extensions/`
+- `.pi/extensions/`
 
 ## Minimal required config
 

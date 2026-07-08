@@ -44,7 +44,7 @@ Catty's harness prompt is embedded in `src/prompt.ts`. End-user agent identity f
 - `USER.md`
 - `ME.md`
 - `skills/`
-- `extensions/`
+- `.pi/extensions/`
 
 ## pi integration
 

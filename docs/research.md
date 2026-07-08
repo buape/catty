@@ -25,7 +25,7 @@ Implementation notes:
 - Use `DefaultResourceLoader` with the configured workspace `cwd` so pi discovers context files, skills, extensions, prompts, and project settings normally.
 - `AGENTS.md` is loaded as a context file from cwd and ancestors.
 - Catty workspace skills live in `skills/`; directories containing `SKILL.md` are discovered recursively.
-- Catty workspace extensions live in `extensions/`.
+- Catty workspace extensions live in `.pi/extensions/`.
 - The SDK supports a full system prompt override with `DefaultResourceLoader({ systemPromptOverride })`.
 - Pi's native project system prompt file is `.pi/SYSTEM.md`; Catty instead embeds its harness prompt in code and passes that through `systemPromptOverride`, while user/workspace identity comes from workspace `AGENTS.md`, `USER.md`, and `ME.md`.
 - `session.prompt()` sends input and waits for the full agent run. If the session is already streaming, use `steer`, `followUp`, or `prompt(..., { streamingBehavior })`.

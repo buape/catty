@@ -16,7 +16,8 @@ import {
 	DefaultResourceLoader,
 	getAgentDir,
 	ModelRegistry,
-	SessionManager
+	SessionManager,
+	SettingsManager
 } from "@earendil-works/pi-coding-agent"
 import { config, workspace } from "./config"
 import { cattySystemPrompt } from "./prompt"
@@ -61,11 +62,15 @@ export async function startCatty() {
 			`Unknown pi model: ${config.pi.provider}/${config.pi.model}`
 		)
 
+	const settingsManager = SettingsManager.create(workspace, agentDir, {
+		projectTrusted: false
+	})
 	const resourceLoader = new DefaultResourceLoader({
 		cwd: workspace,
 		agentDir,
+		settingsManager,
 		additionalSkillPaths: [join(workspace, "skills")],
-		additionalExtensionPaths: [join(workspace, "extensions")],
+		additionalExtensionPaths: [join(workspace, ".pi/extensions")],
 		systemPromptOverride: () => systemPrompt,
 		appendSystemPromptOverride: () => []
 	})
@@ -80,6 +85,7 @@ export async function startCatty() {
 		authStorage,
 		modelRegistry,
 		resourceLoader,
+		settingsManager,
 		customTools: [discordTool],
 		sessionManager: SessionManager.continueRecent(workspace),
 		...(model ? { model } : {}),

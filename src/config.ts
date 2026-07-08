@@ -1,12 +1,4 @@
-import {
-	existsSync,
-	mkdirSync,
-	readdirSync,
-	readFileSync,
-	renameSync,
-	rmdirSync,
-	writeFileSync
-} from "node:fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 
@@ -123,30 +115,8 @@ export const workspace = resolve(
 )
 
 mkdirSync(workspace, { recursive: true })
-
-const moveWorkspaceDir = (oldPath: string, newPath: string) => {
-	if (!existsSync(oldPath)) return
-	if (!existsSync(newPath)) {
-		renameSync(oldPath, newPath)
-		return
-	}
-	for (const entry of readdirSync(oldPath)) {
-		const from = join(oldPath, entry)
-		const to = join(newPath, entry)
-		if (!existsSync(to)) renameSync(from, to)
-	}
-	try {
-		rmdirSync(oldPath)
-	} catch {}
-}
-
-moveWorkspaceDir(join(workspace, ".pi/skills"), join(workspace, "skills"))
-moveWorkspaceDir(
-	join(workspace, ".pi/extensions"),
-	join(workspace, "extensions")
-)
 mkdirSync(join(workspace, "skills"), { recursive: true })
-mkdirSync(join(workspace, "extensions"), { recursive: true })
+mkdirSync(join(workspace, ".pi/extensions"), { recursive: true })
 
 if (!existsSync(join(workspace, "AGENTS.md"))) {
 	writeFileSync(
