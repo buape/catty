@@ -1,4 +1,4 @@
-import type { Client } from "@buape/carbon"
+import { type Client, Routes } from "@buape/carbon"
 import { type Static, Type } from "typebox"
 import { Tool } from "./tool"
 
@@ -14,7 +14,13 @@ const commonSchema = Type.Object({
 	channelId: Type.Optional(Type.String()),
 	roleId: Type.Optional(Type.String()),
 	memberId: Type.Optional(Type.String()),
-	messageId: Type.Optional(Type.String())
+	messageId: Type.Optional(Type.String()),
+	emoji: Type.Optional(
+		Type.String({
+			description:
+				"Emoji to react with. Unicode emoji, or custom emoji formatted as name:id."
+		})
+	)
 })
 
 const discordSchema = Type.Union([
@@ -104,6 +110,34 @@ const discordSchema = Type.Union([
 			action: Type.Literal("search_messages"),
 			guildId: Type.String(),
 			channelId: Type.String()
+		})
+	]),
+	Type.Intersect([
+		commonSchema,
+		Type.Object({
+			action: Type.Literal("react_message"),
+			channelId: Type.String(),
+			id: Type.String({ description: "Message ID" }),
+			emoji: Type.String({
+				description:
+					"Emoji to react with. Unicode emoji, or custom emoji formatted as name:id."
+			})
+		})
+	]),
+	Type.Intersect([
+		commonSchema,
+		Type.Object({
+			action: Type.Literal("pin_message"),
+			channelId: Type.String(),
+			id: Type.String({ description: "Message ID" })
+		})
+	]),
+	Type.Intersect([
+		commonSchema,
+		Type.Object({
+			action: Type.Literal("unpin_message"),
+			channelId: Type.String(),
+			id: Type.String({ description: "Message ID" })
 		})
 	])
 ])
@@ -248,6 +282,46 @@ class SearchMessagesAction extends DiscordAction {
 	}
 }
 
+class ReactMessageAction extends DiscordAction {
+	async execute() {
+		await this.client.rest.put(
+			Routes.channelMessageOwnReaction(
+				this.required(this.params.channelId, "channelId"),
+				this.required(this.params.id ?? this.params.messageId, "id"),
+				encodeURIComponent(this.required(this.params.emoji, "emoji"))
+			),
+			{}
+		)
+		return { ok: true }
+	}
+}
+
+class PinMessageAction extends DiscordAction {
+	async execute() {
+		await (
+			await this.client.fetchMessage(
+				this.required(this.params.channelId, "channelId"),
+				this.required(this.params.id ?? this.params.messageId, "id"),
+				this.params.force
+			)
+		).pin()
+		return { ok: true }
+	}
+}
+
+class UnpinMessageAction extends DiscordAction {
+	async execute() {
+		await (
+			await this.client.fetchMessage(
+				this.required(this.params.channelId, "channelId"),
+				this.required(this.params.id ?? this.params.messageId, "id"),
+				this.params.force
+			)
+		).unpin()
+		return { ok: true }
+	}
+}
+
 const raw = (value: unknown): unknown => {
 	if (Array.isArray(value)) return value.map(raw)
 	if (value && typeof value === "object" && "rawData" in value)
@@ -278,14 +352,20 @@ const createAction = (client: Client, params: DiscordParams) => {
 		return new ListMembersAction(client, params)
 	if (params.action === "list_scheduled_events")
 		return new ListScheduledEventsAction(client, params)
-	return new SearchMessagesAction(client, params)
+	if (params.action === "search_messages")
+		return new SearchMessagesAction(client, params)
+	if (params.action === "react_message")
+		return new ReactMessageAction(client, params)
+	if (params.action === "pin_message")
+		return new PinMessageAction(client, params)
+	return new UnpinMessageAction(client, params)
 }
 
 class DiscordTool extends Tool<typeof discordSchema> {
 	name = "discord"
 	label = "Discord"
 	description =
-		"Fetch Discord user/guild/channel/role/member/message/webhook info, list guild channels/roles/members/events, or search messages in a channel."
+		"Fetch Discord user/guild/channel/role/member/message/webhook info, list guild channels/roles/members/events, search messages in a channel, react to messages, or pin/unpin messages."
 	parameters = discordSchema
 
 	constructor(private getClient: () => Client) {
@@ -302,6 +382,7 @@ class DiscordTool extends Tool<typeof discordSchema> {
 			roleId: params.roleId,
 			memberId: params.memberId,
 			messageId: params.messageId,
+			emoji: params.emoji,
 			query: params.query,
 			limit: params.limit,
 			force: params.force
