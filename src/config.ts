@@ -1,6 +1,13 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import {
+	existsSync,
+	lstatSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	writeFileSync
+} from "node:fs"
 import { homedir } from "node:os"
-import { dirname, join, resolve } from "node:path"
+import { dirname, join, relative, resolve } from "node:path"
 
 const configVersion = 1
 
@@ -113,6 +120,7 @@ export const workspace = resolve(
 		homedir()
 	)
 )
+export const memoryPath = join(workspace, "MEMORY.qmd")
 
 mkdirSync(workspace, { recursive: true })
 mkdirSync(join(workspace, "skills"), { recursive: true })
@@ -128,35 +136,82 @@ Put workspace-specific rules here.
 	)
 }
 
-if (!existsSync(join(workspace, "USER.md"))) {
+if (!existsSync(memoryPath)) {
 	writeFileSync(
-		join(workspace, "USER.md"),
-		`# Primary User
+		memoryPath,
+		`---
+title: Catty Memory
+format: gfm
+---
+
+# Catty Memory
+
+This is Catty's canonical memory file. Keep durable user context, agent identity, preferences, and reusable notes here.
+
+## Primary User
 
 Describe the primary user of this Catty workspace.
-`
-	)
-}
 
-if (!existsSync(join(workspace, "ME.md"))) {
-	writeFileSync(
-		join(workspace, "ME.md"),
-		`# Agent Personality
+## Agent Personality
 
 Name the agent here, then describe how this agent should behave.
+
+## Durable Notes
+
+- Add stable preferences, facts, and recurring project context here.
 `
 	)
 }
+
+const legacyMemoryFiles = [
+	[join(workspace, "USER.md"), "Primary User"],
+	[join(workspace, "ME.md"), "Agent Personality"]
+]
+const legacyMemoryDirs = []
+const seenLegacyMemoryDirs = new Set<string>()
+for (const path of ["memory", "memories", "Memory", "Memories"].map((name) =>
+	join(workspace, name)
+)) {
+	if (!existsSync(path)) continue
+	const stat = lstatSync(path)
+	const key = `${stat.dev}:${stat.ino}`
+	if (!stat.isDirectory() || seenLegacyMemoryDirs.has(key)) continue
+	seenLegacyMemoryDirs.add(key)
+	legacyMemoryDirs.push(path)
+}
+for (const dir of legacyMemoryDirs) {
+	const walk = [dir]
+	for (const current of walk) {
+		for (const entry of readdirSync(current, { withFileTypes: true })) {
+			const path = join(current, entry.name)
+			if (entry.isDirectory()) walk.push(path)
+			else if (/\.(md|qmd|txt)$/i.test(entry.name))
+				legacyMemoryFiles.push([
+					path,
+					`Memory: ${relative(workspace, path)}`
+				])
+		}
+	}
+}
+
+let memoryText = readFileSync(memoryPath, "utf8")
+for (const [path, title] of legacyMemoryFiles) {
+	if (!existsSync(path)) continue
+	const content = readFileSync(path, "utf8").trim()
+	const marker = `<!-- catty-migrated:${relative(workspace, path)} -->`
+	if (!content || memoryText.includes(marker)) continue
+	memoryText = `${memoryText.trimEnd()}\n\n${marker}\n\n## ${title}\n\n${content}\n`
+}
+writeFileSync(memoryPath, memoryText)
 
 if (firstLaunch) {
 	console.log("Catty created first-launch files:")
 	console.log(`- ${configPath}`)
 	console.log(`- ${join(workspace, "AGENTS.md")}`)
-	console.log(`- ${join(workspace, "USER.md")}`)
-	console.log(`- ${join(workspace, "ME.md")}`)
+	console.log(`- ${memoryPath}`)
 	console.log("")
 	console.log(
-		"Fill out the config and workspace Markdown files, then restart Catty."
+		"Fill out the config and workspace QMD memory file, then restart Catty."
 	)
 	process.exit(0)
 }

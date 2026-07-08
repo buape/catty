@@ -1,0 +1,20 @@
+---
+title: Catty Memory
+format: gfm
+---
+
+# Catty Memory
+
+This is Catty's canonical memory file. Keep durable user context, agent identity, preferences, and reusable notes here.
+
+## Primary User
+
+Describe the primary user of this Catty workspace.
+
+## Agent Personality
+
+Name the agent here, then describe how this agent should behave.
+
+## Durable Notes
+
+- Add stable preferences, facts, and recurring project context here.

@@ -399,11 +399,16 @@ class ListScheduledEventsAction extends DiscordAction {
 
 class SearchMessagesAction extends DiscordAction {
 	async execute() {
-		return (await this.fetchGuild()).searchMessages({
-			limit: Math.min(this.params.limit ?? 10, 25),
-			channel_id: [this.required(this.params.channelId, "channelId")],
-			...(this.params.query ? { content: this.params.query } : {})
-		})
+		return this.client.rest.get(
+			Routes.guildMessagesSearch(
+				this.required(this.params.guildId, "guildId")
+			),
+			{
+				limit: Math.min(this.params.limit ?? 10, 25),
+				channel_id: this.required(this.params.channelId, "channelId"),
+				...(this.params.query ? { content: this.params.query } : {})
+			}
+		)
 	}
 }
 
