@@ -98,6 +98,7 @@ Removed/non-configurable values:
 - Memory file: `~/.catty/workspace/MEMORY.qmd`
 - Named config path: `~/.catty/NAME/config.toml`
 - Named workspace: `~/.catty/NAME/workspace`
+- If named agents exist and no unnamed root agent exists, running without `--name`/`--config` prints help instead of creating `~/.catty/config.toml`.
 - Carbon base URL: `http://localhost`
 - HTTP port: `3000` (not configurable)
 - Response mode: `all`
@@ -171,6 +172,8 @@ Empty `users` or `roles` arrays match nobody for that array. If both users and r
 - `all`: respond to every allowed message.
 - `mention-or-reply`: respond only if the bot is mentioned or the message replies to the bot.
 - `prefix`: respond only when the message starts with the configured prefix.
+
+In `mention-or-reply` mode, direct mention pings include the previous 10 channel messages as untrusted context when the previous channel message was not from Catty.
 
 ## Heartbeat
 

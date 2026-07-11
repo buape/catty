@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 import {
+	type APIMessage,
 	Client,
 	type ListenerEventData,
 	MessageCreateListener,
@@ -361,6 +362,10 @@ export async function startCatty(options?: { newSession?: boolean }) {
 			const prefix = config.responses?.prefix ?? "!catty"
 			let content = data.content.trim()
 			const attachments = data.rawMessage.attachments ?? []
+			const botId = client.options.clientId ?? client.clientId
+			const mentioned = data.rawMessage.mentions?.some(
+				(user: { id: string }) => user.id === botId
+			)
 
 			if (mode === "prefix") {
 				if (!content.startsWith(prefix)) {
@@ -374,13 +379,8 @@ export async function startCatty(options?: { newSession?: boolean }) {
 			}
 
 			if (mode === "mention-or-reply") {
-				const mentioned = data.rawMessage.mentions?.some(
-					(user: { id: string }) =>
-						user.id === client.options.clientId
-				)
 				const replied =
-					data.rawMessage.referenced_message?.author?.id ===
-					client.options.clientId
+					data.rawMessage.referenced_message?.author?.id === botId
 				if (!mentioned && !replied) {
 					console.log(
 						"[discord] ignored not mention/reply",
@@ -389,10 +389,7 @@ export async function startCatty(options?: { newSession?: boolean }) {
 					return
 				}
 				content = content
-					.replace(
-						new RegExp(`<@!?${client.options.clientId}>`, "g"),
-						""
-					)
+					.replace(new RegExp(`<@!?${botId}>`, "g"), "")
 					.trim()
 			}
 
@@ -478,10 +475,49 @@ export async function startCatty(options?: { newSession?: boolean }) {
 			const replyContext = referenced
 				? `\nReply: ${referenced.author?.username ?? "unknown"} (${referenced.author?.id ?? "unknown"})\n<begin_untrusted_replied_message_${boundary}>\n${referenced.content?.trim() || "[no text content]"}\n<end_untrusted_replied_message_${boundary}>`
 				: ""
+			let channelContext = ""
+			if (mode === "mention-or-reply" && mentioned) {
+				try {
+					const messages = (await client.rest.get(
+						Routes.channelMessages(data.message.channelId),
+						{ before: data.message.id, limit: 10 }
+					)) as APIMessage[]
+					if (
+						messages[0]?.author?.id &&
+						messages[0].author.id !== botId
+					) {
+						channelContext = `\nRecent channel context before this ping, oldest first:\n<begin_untrusted_recent_channel_context_${boundary}>\n${messages
+							.toReversed()
+							.map((message) => {
+								const text =
+									message.content?.trim() ||
+									"[no text content]"
+								const attachments = message.attachments?.length
+									? ` [attachments: ${message.attachments
+											.map(
+												(attachment) =>
+													attachment.filename ??
+													attachment.id
+											)
+											.join(", ")}]`
+									: ""
+								return `- ${message.timestamp} ${message.author.username} (${message.author.id}): ${text}${attachments}`
+							})
+							.join(
+								"\n"
+							)}\n<end_untrusted_recent_channel_context_${boundary}>`
+					}
+				} catch (error) {
+					console.error(
+						"[discord] recent context fetch failed",
+						error
+					)
+				}
+			}
 			const attachmentContext = attachmentLines.length
 				? `\nAttachments:\n${attachmentLines.join("\n")}`
 				: ""
-			const piPrompt = `Discord ${data.message.id} from ${data.author.username ?? "unknown"} (${data.author.id}) in ${data.message.channelId}${guildId ? ` guild ${guildId}` : ""}.${replyContext}${attachmentContext}
+			const piPrompt = `Discord ${data.message.id} from ${data.author.username ?? "unknown"} (${data.author.id}) in ${data.message.channelId}${guildId ? ` guild ${guildId}` : ""}.${replyContext}${channelContext}${attachmentContext}
 
 <begin_untrusted_user_message_${boundary}>
 ${content || "[no text content]"}

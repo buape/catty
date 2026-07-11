@@ -1,27 +1,7 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs"
 import { homedir, platform, userInfo } from "node:os"
 import { dirname, join } from "node:path"
 import { AuthStorage, getAgentDir } from "@earendil-works/pi-coding-agent"
-import { startCatty } from "./agent"
-import { agentName, config, configPath, workspace } from "./config"
-
-const agentDir = String(config.pi?.agentDir ?? getAgentDir()).replace(
-	/^~(?=$|\/)/,
-	homedir()
-)
-const serviceName = agentName ?? "agent"
-const serviceLabel = `com.catty.${serviceName}`
-const systemdService = agentName
-	? `catty-${serviceName}.service`
-	: "catty.service"
-const devMode = Bun.argv.includes("--dev")
-const devRoot = join(homedir(), "Developer/catty")
-const logDir = join(homedir(), "Library/Logs/catty")
-const logPath = join(logDir, agentName ? `${serviceName}.log` : "catty.log")
-const errorLogPath = join(
-	logDir,
-	agentName ? `${serviceName}.error.log` : "catty.error.log"
-)
 
 const run = async (command: string[]) => {
 	console.log(`$ ${command.join(" ")}`)
@@ -42,13 +22,6 @@ const bunBin = () =>
 	process.env.BUN_INSTALL
 		? join(process.env.BUN_INSTALL, "bin/bun")
 		: "/opt/homebrew/bin/bun"
-
-const serviceFile = () =>
-	platform() === "darwin"
-		? join(homedir(), "Library/LaunchAgents", `${serviceLabel}.plist`)
-		: join(homedir(), ".config/systemd/user", systemdService)
-
-const serviceTarget = () => `gui/${userInfo().uid}/${serviceLabel}`
 
 const printHelp = () => {
 	console.log(`Catty
@@ -72,6 +45,80 @@ Options:
   --new                         Start a fresh pi session instead of resuming
 `)
 }
+
+const args = Bun.argv.slice(2)
+const command = args.find(
+	(arg, index) =>
+		!arg.startsWith("--") &&
+		args[index - 1] !== "--config" &&
+		args[index - 1] !== "--name"
+)
+const wantsHelp =
+	args.includes("help") || args.includes("--help") || args.includes("-h")
+const cattyDir = join(homedir(), ".catty")
+const namedAgents = existsSync(cattyDir)
+	? readdirSync(cattyDir, { withFileTypes: true })
+			.filter(
+				(entry) => entry.isDirectory() && entry.name !== "workspace"
+			)
+			.map((entry) => entry.name)
+			.filter(
+				(name) =>
+					existsSync(join(cattyDir, name, "config.toml")) ||
+					existsSync(join(cattyDir, name, "workspace"))
+			)
+	: []
+const hasRootAgent =
+	existsSync(join(cattyDir, "config.toml")) ||
+	existsSync(join(cattyDir, "workspace"))
+const usingDefaultConfig = !args.includes("--config")
+const usingNamedAgent = args.includes("--name")
+
+if (wantsHelp) {
+	printHelp()
+	process.exit(0)
+}
+
+if (
+	usingDefaultConfig &&
+	!usingNamedAgent &&
+	!hasRootAgent &&
+	namedAgents.length > 0
+) {
+	console.log(
+		`Catty is using named agents (${namedAgents.join(", ")}); pass --name NAME.`
+	)
+	printHelp()
+	process.exit(0)
+}
+
+const { agentName, config, configPath, workspace } = await import("./config")
+const { startCatty } = await import("./agent")
+
+const agentDir = String(config.pi?.agentDir ?? getAgentDir()).replace(
+	/^~(?=$|\/)/,
+	homedir()
+)
+const serviceName = agentName ?? "agent"
+const serviceLabel = `com.catty.${serviceName}`
+const systemdService = agentName
+	? `catty-${serviceName}.service`
+	: "catty.service"
+const devMode = Bun.argv.includes("--dev")
+const devRoot = join(homedir(), "Developer/catty")
+const logDir = join(homedir(), "Library/Logs/catty")
+const logPath = join(logDir, agentName ? `${serviceName}.log` : "catty.log")
+const errorLogPath = join(
+	logDir,
+	agentName ? `${serviceName}.error.log` : "catty.error.log"
+)
+
+const serviceFile = () =>
+	platform() === "darwin"
+		? join(homedir(), "Library/LaunchAgents", `${serviceLabel}.plist`)
+		: join(homedir(), ".config/systemd/user", systemdService)
+
+const serviceTarget = () => `gui/${userInfo().uid}/${serviceLabel}`
 
 const installService = async () => {
 	mkdirSync(dirname(serviceFile()), { recursive: true })
@@ -216,19 +263,7 @@ const showLogs = async (follow: boolean) => {
 	)
 }
 
-const args = Bun.argv.slice(2)
-const command = args.find(
-	(arg, index) =>
-		!arg.startsWith("--") &&
-		args[index - 1] !== "--config" &&
-		args[index - 1] !== "--name"
-)
-const wantsHelp =
-	args.includes("help") || args.includes("--help") || args.includes("-h")
-
-if (wantsHelp) {
-	printHelp()
-} else if (!command) {
+if (!command) {
 	await startCatty({ newSession: args.includes("--new") })
 } else if (command === "help") {
 	printHelp()
