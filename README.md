@@ -63,7 +63,7 @@ Named agent namespace:
 catty --name work
 ```
 
-This uses `~/.catty/work/config.toml`, `~/.catty/work/workspace`, and separate service/log names. Manage its service with the same name flag:
+This uses `~/.catty/work/config.toml`, `~/.catty/work/workspace`, and separate service/log names. Catty does not allow mixing unnamed root `~/.catty/config.toml` / `~/.catty/workspace` with named default-layout agents; explicit `--config` plus explicit `pi.workspace` can opt out. Manage its service with the same name flag:
 
 ```bash
 catty --name work service install

@@ -24,10 +24,41 @@ if (agentName !== undefined && !/^[a-zA-Z0-9_-]+$/.test(agentName))
 	throw new Error(
 		"--name must contain only letters, numbers, underscores, or hyphens"
 	)
+const rootConfigPath = join(cattyDir, "config.toml")
+const rootWorkspace = join(cattyDir, "workspace")
+const namedAgents = existsSync(cattyDir)
+	? readdirSync(cattyDir, { withFileTypes: true })
+			.filter(
+				(entry) => entry.isDirectory() && entry.name !== "workspace"
+			)
+			.map((entry) => entry.name)
+			.filter(
+				(name) =>
+					existsSync(join(cattyDir, name, "config.toml")) ||
+					existsSync(join(cattyDir, name, "workspace"))
+			)
+	: []
+const hasRootAgent = existsSync(rootConfigPath) || existsSync(rootWorkspace)
+const configArgIndex = Bun.argv.indexOf("--config")
+const usingDefaultConfig = configArgIndex === -1
+const assertUnmixedDefaultLayout = () => {
+	if (hasRootAgent && namedAgents.length > 0)
+		throw new Error(
+			`Catty found both unnamed ~/.catty config/workspace and named agents (${namedAgents.join(", ")}). Use either all named agents or the unnamed agent, not both.`
+		)
+	if (agentName && hasRootAgent)
+		throw new Error(
+			"Cannot use --name with an existing unnamed ~/.catty config/workspace. Move the unnamed agent into a named ~/.catty/NAME directory first."
+		)
+	if (!agentName && !hasRootAgent && namedAgents.length > 0)
+		throw new Error(
+			`Catty is using named agents (${namedAgents.join(", ")}); pass --name NAME.`
+		)
+}
+if (usingDefaultConfig) assertUnmixedDefaultLayout()
 const agentCattyDir = agentName ? join(cattyDir, agentName) : cattyDir
 const defaultConfigPath = join(agentCattyDir, "config.toml")
 const defaultWorkspace = join(agentCattyDir, "workspace")
-const configArgIndex = Bun.argv.indexOf("--config")
 
 export const configPath = resolve(
 	configArgIndex === -1
@@ -130,6 +161,8 @@ export const workspace = resolve(
 		homedir()
 	)
 )
+if (!usingDefaultConfig && config.pi?.workspace === undefined)
+	assertUnmixedDefaultLayout()
 export const memoryPath = join(workspace, "MEMORY.qmd")
 export const cattyWorkspaceDir = join(workspace, ".catty")
 export const postMigrationPromptsPath = join(

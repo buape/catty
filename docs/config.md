@@ -9,7 +9,7 @@ Default path:
 CLI options:
 
 - `--config PATH` — use a custom config path.
-- `--name NAME` — use a named agent namespace. Without `--config`, config lives at `~/.catty/NAME/config.toml` and workspace at `~/.catty/NAME/workspace`. Services/logs are named separately too.
+- `--name NAME` — use a named agent namespace. Without `--config`, config lives at `~/.catty/NAME/config.toml` and workspace at `~/.catty/NAME/workspace`. Services/logs are named separately too. Catty does not allow mixing the unnamed root `~/.catty/config.toml` / `~/.catty/workspace` layout with named default-layout agents; explicit `--config` plus explicit `pi.workspace` can opt out of the default layout.
 - `--dev` — when installing a service, generate it to run `bun start -- ...` from `~/Developer/catty` instead of the installed Catty binary.
 - `--new` — start a fresh pi session instead of resuming the latest workspace session.
 
