@@ -92,7 +92,7 @@ Catty's own harness system prompt is embedded in code at `src/prompt.ts`.
 - Catty uses Discord typing indicators while pi is working instead of sending `Thinking…`.
 - Verbose logs show received Discord messages, the exact prompt sent to pi, pi status/events, and final responses.
 - Optional heartbeat prompts run from `HEARTBEAT.md` only when `[heartbeat].enabled = true` is set; they use a dedicated separate in-memory pi session by default unless `[heartbeat].session = "main"`.
-- The built-in `memory` tool uses QMD to update/search/get/append/embed `MEMORY.qmd`; its local SQLite index lives at `.catty/qmd.sqlite` inside the workspace.
+- The built-in `memory` tool uses QMD to update/search/get/append/embed `MEMORY.qmd`; its local SQLite index lives at `.catty/qmd.sqlite` inside the workspace. QMD query-expansion and embedding models are predownloaded at startup.
 
 ## Services
 

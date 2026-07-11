@@ -87,6 +87,7 @@ export async function startCatty(options?: { newSession?: boolean }) {
 	await resourceLoader.reload()
 
 	const memoryTool = createMemoryTool(workspace, memoryPath)
+	await memoryTool.predownload()
 	const runPostMigrationPrompts = async () => {
 		const prompts = readPostMigrationPrompts()
 		if (prompts.length === 0) return
@@ -101,7 +102,7 @@ export async function startCatty(options?: { newSession?: boolean }) {
 				modelRegistry,
 				resourceLoader,
 				settingsManager,
-				customTools: [memoryTool],
+				customTools: [memoryTool.definition],
 				sessionManager: SessionManager.inMemory(workspace),
 				...(model ? { model } : {}),
 				...(config.pi?.thinking
@@ -183,7 +184,7 @@ export async function startCatty(options?: { newSession?: boolean }) {
 		modelRegistry,
 		resourceLoader,
 		settingsManager,
-		customTools: [discordTool, memoryTool],
+		customTools: [discordTool, memoryTool.definition],
 		sessionManager: options?.newSession
 			? SessionManager.create(workspace)
 			: SessionManager.continueRecent(workspace),
@@ -208,7 +209,7 @@ export async function startCatty(options?: { newSession?: boolean }) {
 			modelRegistry,
 			resourceLoader,
 			settingsManager,
-			customTools: [discordTool, memoryTool],
+			customTools: [discordTool, memoryTool.definition],
 			sessionManager: SessionManager.inMemory(workspace),
 			...(model ? { model } : {}),
 			...(config.pi?.thinking

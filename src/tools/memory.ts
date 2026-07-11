@@ -95,6 +95,35 @@ class MemoryTool extends Tool<typeof memorySchema> {
 		if (Date.now() - this.updatedAt > 1000) await this.update()
 	}
 
+	async predownload() {
+		console.log("[memory] predownload started")
+		let store: QMDStore
+		try {
+			store = await this.getStore()
+			await this.update()
+		} catch (error) {
+			console.error("[memory] predownload setup failed", error)
+			return
+		}
+		try {
+			console.log("[memory] predownload query expansion model")
+			await store.expandQuery("Catty memory recall", {
+				intent: "Warm up QMD memory recall"
+			})
+		} catch (error) {
+			console.error("[memory] query expansion predownload failed", error)
+		}
+		try {
+			console.log("[memory] predownload embedding model")
+			await store.internal.llm?.embed("Catty memory recall", {
+				isQuery: true
+			})
+		} catch (error) {
+			console.error("[memory] embedding predownload failed", error)
+		}
+		console.log("[memory] predownload finished")
+	}
+
 	protected async execute(toolCallId: string, params: MemoryParams) {
 		console.log("[memory] tool started", {
 			id: toolCallId,
@@ -192,5 +221,10 @@ class MemoryTool extends Tool<typeof memorySchema> {
 	}
 }
 
-export const createMemoryTool = (workspace: string, memoryPath: string) =>
-	new MemoryTool(workspace, memoryPath).toDefinition()
+export const createMemoryTool = (workspace: string, memoryPath: string) => {
+	const tool = new MemoryTool(workspace, memoryPath)
+	return {
+		definition: tool.toDefinition(),
+		predownload: () => tool.predownload()
+	}
+}
