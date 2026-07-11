@@ -4,6 +4,7 @@ import {
 	mkdirSync,
 	readdirSync,
 	readFileSync,
+	renameSync,
 	writeFileSync
 } from "node:fs"
 import { homedir } from "node:os"
@@ -195,14 +196,28 @@ for (const dir of legacyMemoryDirs) {
 }
 
 let memoryText = readFileSync(memoryPath, "utf8")
+const migratedMemoryFiles = []
 for (const [path, title] of legacyMemoryFiles) {
 	if (!existsSync(path)) continue
+	if (!lstatSync(path).isFile()) continue
 	const content = readFileSync(path, "utf8").trim()
 	const marker = `<!-- catty-migrated:${relative(workspace, path)} -->`
-	if (!content || memoryText.includes(marker)) continue
-	memoryText = `${memoryText.trimEnd()}\n\n${marker}\n\n## ${title}\n\n${content}\n`
+	if (content && !memoryText.includes(marker))
+		memoryText = `${memoryText.trimEnd()}\n\n${marker}\n\n## ${title}\n\n${content}\n`
+	migratedMemoryFiles.push([
+		path,
+		join(workspace, "_migrated", relative(workspace, path))
+	])
 }
 writeFileSync(memoryPath, memoryText)
+for (const [path, migratedPath] of migratedMemoryFiles) {
+	if (!existsSync(path)) continue
+	mkdirSync(dirname(migratedPath), { recursive: true })
+	let destination = migratedPath
+	for (let index = 2; existsSync(destination); index++)
+		destination = `${migratedPath}.${index}`
+	renameSync(path, destination)
+}
 
 if (firstLaunch) {
 	console.log("Catty created first-launch files:")

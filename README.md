@@ -69,7 +69,7 @@ Created under `~/.catty/workspace` by default:
 
 - `AGENTS.md` — workspace operating rules.
 - `MEMORY.qmd` — durable user context, preferences, reusable notes, agent name, and personality.
-- Legacy `USER.md`, `ME.md`, and `memory/` or `memories/` Markdown/QMD/text files are imported into `MEMORY.qmd` once if present.
+- Legacy `USER.md`, `ME.md`, and `memory/` or `memories/` Markdown/QMD/text files are imported into `MEMORY.qmd` once if present, then moved under `_migrated/`.
 - `HEARTBEAT.md` — optional heartbeat prompt source when enabled.
 - `skills/` — pi skills.
 - `.pi/extensions/` — pi extensions.

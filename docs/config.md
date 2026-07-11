@@ -186,4 +186,4 @@ Catty always uses one canonical memory file:
 
 Catty creates it automatically when missing and loads it into pi as a native context file. There is no memory-path setting. Durable user context, preferences, reusable notes, and agent personality belong in `MEMORY.qmd`; workspace operating rules belong in `AGENTS.md`.
 
-On upgrade, Catty preserves old files and imports existing `USER.md`, `ME.md`, and Markdown/QMD/text files under `memory/`, `memories/`, `Memory/`, or `Memories/` into `MEMORY.qmd` once using migration markers.
+On upgrade, Catty imports existing `USER.md`, `ME.md`, and Markdown/QMD/text files under `memory/`, `memories/`, `Memory/`, or `Memories/` into `MEMORY.qmd` once using migration markers, then moves those legacy files under workspace `_migrated/`.
