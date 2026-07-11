@@ -9,14 +9,11 @@ import {
 } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, extname, join, relative, resolve } from "node:path"
+import templateConfig from "../docs/templates/config.toml" with { type: "text" }
 
 const configVersion = 1
 
 const cattyDir = join(homedir(), ".catty")
-const templateConfigPath = join(
-	import.meta.dirname,
-	"../docs/templates/config.toml"
-)
 const nameArgIndex = Bun.argv.indexOf("--name")
 export const agentName =
 	nameArgIndex === -1 ? undefined : (Bun.argv[nameArgIndex + 1] ?? "")
@@ -70,7 +67,7 @@ const firstLaunch = !existsSync(configPath)
 
 if (firstLaunch) {
 	mkdirSync(dirname(configPath), { recursive: true })
-	writeFileSync(configPath, readFileSync(templateConfigPath, "utf8"))
+	writeFileSync(configPath, templateConfig)
 }
 
 let configText = readFileSync(configPath, "utf8")
