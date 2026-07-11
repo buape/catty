@@ -323,7 +323,7 @@ export async function startCatty(options?: { newSession?: boolean }) {
 			data: ListenerEventData["MESSAGE_CREATE"],
 			client: Client
 		) {
-			if (data.author.id === client.options.clientId) {
+			if (data.author.id === client.clientId) {
 				return
 			}
 
@@ -559,8 +559,6 @@ ${content || "[no text content]"}
 	client = new Client(
 		{
 			baseUrl: "http://localhost",
-			clientId: String(application.id),
-			publicKey: String(application.verify_key),
 			token: config.token,
 			disableDeployRoute: true,
 			runtimeProfile: "persistent",
