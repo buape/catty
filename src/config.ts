@@ -8,7 +8,7 @@ import {
 	writeFileSync
 } from "node:fs"
 import { homedir } from "node:os"
-import { dirname, join, relative, resolve } from "node:path"
+import { dirname, extname, join, relative, resolve } from "node:path"
 
 const configVersion = 1
 
@@ -113,6 +113,7 @@ export const config = Bun.TOML.parse(configText) as {
 		enabled: boolean
 		file?: string
 		intervalMinutes?: number
+		session?: "separate" | "main"
 	}
 }
 export const workspace = resolve(
@@ -122,8 +123,14 @@ export const workspace = resolve(
 	)
 )
 export const memoryPath = join(workspace, "MEMORY.qmd")
+export const cattyWorkspaceDir = join(workspace, ".catty")
+export const postMigrationPromptsPath = join(
+	cattyWorkspaceDir,
+	"post-migration-prompts.jsonl"
+)
 
 mkdirSync(workspace, { recursive: true })
+mkdirSync(cattyWorkspaceDir, { recursive: true })
 mkdirSync(join(workspace, "skills"), { recursive: true })
 mkdirSync(join(workspace, ".pi/extensions"), { recursive: true })
 
@@ -135,6 +142,38 @@ if (!existsSync(join(workspace, "AGENTS.md"))) {
 Put workspace-specific rules here.
 `
 	)
+}
+
+export const queuePostMigrationPrompt = (title: string, prompt: string) => {
+	writeFileSync(
+		postMigrationPromptsPath,
+		`${JSON.stringify({ createdAt: new Date().toISOString(), title, prompt })}\n`,
+		{ flag: "a" }
+	)
+}
+
+export const readPostMigrationPrompts = () => {
+	if (!existsSync(postMigrationPromptsPath)) return []
+	return readFileSync(postMigrationPromptsPath, "utf8")
+		.split("\n")
+		.map((line) => line.trim())
+		.filter(Boolean)
+		.flatMap((line) => {
+			try {
+				const parsed = JSON.parse(line)
+				return typeof parsed.title === "string" &&
+					typeof parsed.prompt === "string"
+					? [parsed]
+					: []
+			} catch {
+				return []
+			}
+		})
+}
+
+export const clearPostMigrationPrompts = () => {
+	if (existsSync(postMigrationPromptsPath))
+		writeFileSync(postMigrationPromptsPath, "")
 }
 
 if (!existsSync(memoryPath)) {
@@ -195,21 +234,20 @@ for (const dir of legacyMemoryDirs) {
 	}
 }
 
-let memoryText = readFileSync(memoryPath, "utf8")
 const migratedMemoryFiles = []
-for (const [path, title] of legacyMemoryFiles) {
+for (const [index, [path]] of legacyMemoryFiles.entries()) {
 	if (!existsSync(path)) continue
 	if (!lstatSync(path).isFile()) continue
-	const content = readFileSync(path, "utf8").trim()
-	const marker = `<!-- catty-migrated:${relative(workspace, path)} -->`
-	if (content && !memoryText.includes(marker))
-		memoryText = `${memoryText.trimEnd()}\n\n${marker}\n\n## ${title}\n\n${content}\n`
 	migratedMemoryFiles.push([
 		path,
-		join(workspace, "_migrated", relative(workspace, path))
+		join(
+			workspace,
+			"_migrated",
+			`memory-import-${index + 1}${extname(path) || ".md"}`
+		)
 	])
 }
-writeFileSync(memoryPath, memoryText)
+const movedMemoryFiles = []
 for (const [path, migratedPath] of migratedMemoryFiles) {
 	if (!existsSync(path)) continue
 	mkdirSync(dirname(migratedPath), { recursive: true })
@@ -217,7 +255,26 @@ for (const [path, migratedPath] of migratedMemoryFiles) {
 	for (let index = 2; existsSync(destination); index++)
 		destination = `${migratedPath}.${index}`
 	renameSync(path, destination)
+	movedMemoryFiles.push(destination)
 }
+if (movedMemoryFiles.length > 0)
+	queuePostMigrationPrompt(
+		"Synthesize MEMORY.qmd from migrated memory sources",
+		`Catty staged source files under _migrated/ so you can synthesize clean durable memory instead of dumping source files verbatim.
+
+Migrated files to read:
+${movedMemoryFiles.map((path) => `- ${relative(workspace, path)}`).join("\n")}
+
+Run this post-migration cleanup in the workspace:
+
+1. Read MEMORY.qmd and every migrated file listed above.
+2. Rewrite MEMORY.qmd as the canonical durable memory file using clean sections for primary user context, agent identity/personality, preferences, and durable notes.
+3. Preserve all actual user facts, preferences, personality notes, and durable memories from the migrated files and any existing MEMORY.qmd content.
+4. Do not paste the migrated files wholesale; synthesize, deduplicate, and organize the memory so future agents can use it directly.
+5. Remove or update active workspace references that point future agents to durable memory sources outside MEMORY.qmd or the built-in QMD memory tool.
+6. Do not edit or delete _migrated/ except to read it for context.
+7. Keep edits small and summarize what changed.`
+	)
 
 if (firstLaunch) {
 	console.log("Catty created first-launch files:")

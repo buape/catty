@@ -7,7 +7,7 @@ KISS above everything else.
 - Let TypeScript infer types unless an exported/reused shape needs a name.
 - No random helper functions, standalone types, or interfaces.
 - No framework hacks. Use pi the pi way and Carbon the Carbon way.
-- One assistant, one pi session. Never create per-channel, per-user, or per-guild pi sessions.
+- One assistant, one main pi session for Discord runtime. Never create per-channel, per-user, or per-guild pi sessions. Post-migration maintenance may run in a separate in-memory side session before the main session starts.
 - Runtime config lives in one config file. Secrets can live there too.
 - Auth rules:
   - top-level `auth.users` is for DMs only

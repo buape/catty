@@ -74,8 +74,8 @@ catty --new
 Created under `~/.catty/workspace` by default:
 
 - `AGENTS.md` — workspace operating rules.
-- `MEMORY.qmd` — durable user context, preferences, reusable notes, agent name, and personality.
-- Legacy `USER.md`, `ME.md`, and `memory/` or `memories/` Markdown/QMD/text files are imported into `MEMORY.qmd` once if present, then moved under `_migrated/`.
+- `MEMORY.qmd` — durable user context, preferences, reusable notes, agent name, and personality; indexed by QMD for memory search/retrieval.
+- Migration artifacts may be staged under `_migrated/`; post-migration side sessions synthesize clean durable content into `MEMORY.qmd`.
 - `HEARTBEAT.md` — optional heartbeat prompt source when enabled.
 - `skills/` — pi skills.
 - `.pi/extensions/` — pi extensions.
@@ -91,7 +91,8 @@ Catty's own harness system prompt is embedded in code at `src/prompt.ts`.
 - User-provided Discord content is wrapped in per-message untrusted begin/end blocks before pi sees it.
 - Catty uses Discord typing indicators while pi is working instead of sending `Thinking…`.
 - Verbose logs show received Discord messages, the exact prompt sent to pi, pi status/events, and final responses.
-- Optional heartbeat prompts run from `HEARTBEAT.md` only when `[heartbeat].enabled = true` is set.
+- Optional heartbeat prompts run from `HEARTBEAT.md` only when `[heartbeat].enabled = true` is set; they use a dedicated separate in-memory pi session by default unless `[heartbeat].session = "main"`.
+- The built-in `memory` tool uses QMD to update/search/get/append/embed `MEMORY.qmd`; its local SQLite index lives at `.catty/qmd.sqlite` inside the workspace.
 
 ## Services
 

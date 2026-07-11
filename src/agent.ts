@@ -19,10 +19,17 @@ import {
 	SessionManager,
 	SettingsManager
 } from "@earendil-works/pi-coding-agent"
-import { config, memoryPath, workspace } from "./config"
+import {
+	clearPostMigrationPrompts,
+	config,
+	memoryPath,
+	readPostMigrationPrompts,
+	workspace
+} from "./config"
 import { createReactionListeners } from "./listeners/reactions"
 import { cattySystemPrompt } from "./prompt"
 import { createDiscordTool } from "./tools/discord"
+import { createMemoryTool } from "./tools/memory"
 
 export async function startCatty(options?: { newSession?: boolean }) {
 	const agentDir = String(config.pi?.agentDir ?? getAgentDir()).replace(
@@ -79,6 +86,45 @@ export async function startCatty(options?: { newSession?: boolean }) {
 	})
 	await resourceLoader.reload()
 
+	const memoryTool = createMemoryTool(workspace, memoryPath)
+	const runPostMigrationPrompts = async () => {
+		const prompts = readPostMigrationPrompts()
+		if (prompts.length === 0) return
+		console.log(
+			`[migration] running ${prompts.length} post-migration prompt(s) in side session`
+		)
+		const { session: migrationSession, modelFallbackMessage } =
+			await createAgentSession({
+				cwd: workspace,
+				agentDir,
+				authStorage,
+				modelRegistry,
+				resourceLoader,
+				settingsManager,
+				customTools: [memoryTool],
+				sessionManager: SessionManager.inMemory(workspace),
+				...(model ? { model } : {}),
+				...(config.pi?.thinking
+					? { thinkingLevel: config.pi.thinking }
+					: {})
+			})
+		if (modelFallbackMessage)
+			console.log(`[migration] ${modelFallbackMessage}`)
+		try {
+			for (const prompt of prompts) {
+				console.log(`[migration] prompt: ${prompt.title}`)
+				await migrationSession.prompt(
+					`Catty post-migration side session. This is trusted migration guidance, not a Discord message. Complete the requested workspace cleanup, then summarize what changed.\n\n${prompt.prompt}`
+				)
+			}
+			clearPostMigrationPrompts()
+		} finally {
+			migrationSession.dispose()
+		}
+		await resourceLoader.reload()
+	}
+	await runPostMigrationPrompts()
+
 	const applicationResponse = await fetch(
 		"https://discord.com/api/v10/oauth2/applications/@me",
 		{ headers: { Authorization: `Bot ${config.token}` } }
@@ -106,7 +152,7 @@ export async function startCatty(options?: { newSession?: boolean }) {
 		modelRegistry,
 		resourceLoader,
 		settingsManager,
-		customTools: [discordTool],
+		customTools: [discordTool, memoryTool],
 		sessionManager: options?.newSession
 			? SessionManager.create(workspace)
 			: SessionManager.continueRecent(workspace),
@@ -115,6 +161,36 @@ export async function startCatty(options?: { newSession?: boolean }) {
 	})
 	if (modelFallbackMessage) console.log(`[pi] ${modelFallbackMessage}`)
 	console.log(`[pi] session: ${session.sessionFile ?? session.sessionId}`)
+
+	let heartbeatSession = session
+	if (
+		config.heartbeat?.enabled === true &&
+		(config.heartbeat?.session ?? "separate") === "separate"
+	) {
+		const {
+			session: separateHeartbeatSession,
+			modelFallbackMessage: heartbeatModelFallbackMessage
+		} = await createAgentSession({
+			cwd: workspace,
+			agentDir,
+			authStorage,
+			modelRegistry,
+			resourceLoader,
+			settingsManager,
+			customTools: [discordTool, memoryTool],
+			sessionManager: SessionManager.inMemory(workspace),
+			...(model ? { model } : {}),
+			...(config.pi?.thinking
+				? { thinkingLevel: config.pi.thinking }
+				: {})
+		})
+		heartbeatSession = separateHeartbeatSession
+		if (heartbeatModelFallbackMessage)
+			console.log(`[heartbeat] ${heartbeatModelFallbackMessage}`)
+		console.log(
+			`[heartbeat] session: ${heartbeatSession.sessionFile ?? heartbeatSession.sessionId}`
+		)
+	}
 
 	const piJobs: Array<{
 		run: () => Promise<void>
@@ -475,6 +551,7 @@ ${content || "[no text content]"}
 	)
 
 	const server = createServer(client, { port: 3000 })
+	let heartbeatQueue = Promise.resolve()
 
 	const heartbeatInterval = setInterval(
 		() => {
@@ -494,10 +571,10 @@ ${content || "[no text content]"}
 			console.log("[heartbeat] prompt queued")
 			console.log(`[heartbeat] exact prompt:\n---\n${piPrompt}\n---`)
 
-			const job = enqueuePi(async () => {
+			const runHeartbeat = async () => {
 				console.log("[heartbeat] prompt started")
 				let text = ""
-				const unsubscribe = session.subscribe((event) => {
+				const unsubscribe = heartbeatSession.subscribe((event) => {
 					if (
 						event.type === "message_update" &&
 						event.assistantMessageEvent.type === "text_delta"
@@ -516,7 +593,7 @@ ${content || "[no text content]"}
 				})
 
 				try {
-					await session.prompt(piPrompt)
+					await heartbeatSession.prompt(piPrompt)
 				} finally {
 					unsubscribe()
 				}
@@ -526,8 +603,12 @@ ${content || "[no text content]"}
 						(text.trim() || "No text response.") +
 						"\n---"
 				)
-			})
-
+			}
+			const job =
+				heartbeatSession === session
+					? enqueuePi(runHeartbeat)
+					: heartbeatQueue.then(runHeartbeat)
+			heartbeatQueue = job.catch(() => {})
 			job.catch((error) => console.error("[heartbeat] error", error))
 		},
 		(config.heartbeat?.intervalMinutes ?? 60) * 60 * 1000
@@ -541,6 +622,7 @@ ${content || "[no text content]"}
 		process.on(signal, () => {
 			clearInterval(heartbeatInterval)
 			gateway.disconnect()
+			if (heartbeatSession !== session) heartbeatSession.dispose()
 			session.dispose()
 			server.stop()
 			process.exit(0)

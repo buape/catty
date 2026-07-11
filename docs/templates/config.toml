@@ -65,6 +65,8 @@ verbose = false
 # file = "HEARTBEAT.md"
 # Minutes between heartbeat prompts. Default: 60.
 # intervalMinutes = 60
+# Session mode: separate or main. Default: separate.
+# session = "separate"
 
 # DO NOT CHANGE THIS VALUE
 version = 1

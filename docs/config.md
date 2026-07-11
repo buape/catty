@@ -170,13 +170,14 @@ Empty `users` or `roles` arrays match nobody for that array. If both users and r
 
 ## Heartbeat
 
-Heartbeat is an optional hourly-style prompt from a workspace file. It uses the same single pi session and the same in-process queue as Discord messages.
+Heartbeat is an optional hourly-style prompt from a workspace file. By default it uses a dedicated separate in-memory pi session so maintenance chatter does not pollute or get resumed as the Discord conversation session. Set `session = "main"` to run heartbeat prompts through the main Discord session queue instead.
 
 ```toml
 [heartbeat]
 enabled = true
 # file = "HEARTBEAT.md"
 # intervalMinutes = 60
+# session = "separate"
 ```
 
 When enabled, Catty reads the configured file relative to the workspace, skips missing/empty files, and logs the exact heartbeat prompt and final pi response.
@@ -191,4 +192,6 @@ Catty always uses one canonical memory file:
 
 Catty creates it automatically when missing and loads it into pi as a native context file. There is no memory-path setting. Durable user context, preferences, reusable notes, and agent personality belong in `MEMORY.qmd`; workspace operating rules belong in `AGENTS.md`.
 
-On upgrade, Catty imports existing `USER.md`, `ME.md`, and Markdown/QMD/text files under `memory/`, `memories/`, `Memory/`, or `Memories/` into `MEMORY.qmd` once using migration markers, then moves those legacy files under workspace `_migrated/`.
+Catty also exposes a built-in `memory` tool backed by QMD (`@tobilu/qmd`). The tool indexes `MEMORY.qmd` into workspace `.catty/qmd.sqlite`, updates the QMD index before recall, and supports search, hybrid query, get, append, update, status, and embed actions.
+
+On upgrade, Catty may stage migration artifacts under `_migrated/`, then queue a post-migration agent prompt in `.catty/post-migration-prompts.jsonl`. On the next startup phase Catty runs that prompt in a separate in-memory side session so durable memory is synthesized into clean `MEMORY.qmd` content.
