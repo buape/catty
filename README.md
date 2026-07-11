@@ -75,7 +75,7 @@ Created under `~/.catty/workspace` by default:
 
 - `AGENTS.md` — workspace operating rules.
 - `MEMORY.qmd` — durable user context, preferences, reusable notes, agent name, and personality; indexed by QMD for memory search/retrieval.
-- Migration artifacts may be staged under `_migrated/`; post-migration side sessions synthesize clean durable content into `MEMORY.qmd`.
+- Migration artifacts may be staged under `_migrated/`; post-migration side sessions organize durable content into `MEMORY.qmd` without condensing it.
 - `HEARTBEAT.md` — optional heartbeat prompt source when enabled.
 - `skills/` — pi skills.
 - `.pi/extensions/` — pi extensions.

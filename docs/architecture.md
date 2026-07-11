@@ -49,7 +49,7 @@ Migrations that need semantic cleanup can call `queuePostMigrationPrompt(title, 
 
 On startup, after resources and the memory tool are available but before the main/resumed Discord session is created, Catty drains the queue in a separate `SessionManager.inMemory(workspace)` side session. If every prompt succeeds, Catty clears the queue and reloads workspace resources so the main session sees any file edits. If the side session fails, the queue remains for retry on the next launch.
 
-Memory migrations can use this to ask a side agent to read files staged under `_migrated/` and synthesize their durable facts into clean `MEMORY.qmd` content.
+Memory migrations can use this to ask a side agent to read files staged under `_migrated/` and organize their durable facts into clean `MEMORY.qmd` content without condensation or information loss.
 
 ## Prompting
 

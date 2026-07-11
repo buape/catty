@@ -245,8 +245,8 @@ for (const [path, migratedPath] of migratedMemoryFiles) {
 }
 if (movedMemoryFiles.length > 0)
 	queuePostMigrationPrompt(
-		"Synthesize MEMORY.qmd from migrated memory sources",
-		`Catty staged source files under _migrated/ so you can synthesize clean durable memory instead of dumping source files verbatim.
+		"Organize MEMORY.qmd from migrated memory sources",
+		`Catty staged source files under _migrated/ so you can organize durable memory without losing any information.
 
 Migrated files to read:
 ${movedMemoryFiles.map((path) => `- ${relative(workspace, path)}`).join("\n")}
@@ -255,11 +255,13 @@ Run this post-migration cleanup in the workspace:
 
 1. Read MEMORY.qmd and every migrated file listed above.
 2. Rewrite MEMORY.qmd as the canonical durable memory file using clean sections for primary user context, agent identity/personality, preferences, and durable notes.
-3. Preserve all actual user facts, preferences, personality notes, and durable memories from the migrated files and any existing MEMORY.qmd content.
-4. Do not paste the migrated files wholesale; synthesize, deduplicate, and organize the memory so future agents can use it directly.
-5. Remove or update active workspace references that point future agents to durable memory sources outside MEMORY.qmd or the built-in QMD memory tool.
-6. Do not edit or delete _migrated/ except to read it for context.
-7. Keep edits small and summarize what changed.`
+3. Your goal is organization only, not condensation. Do not summarize away, compress away, generalize away, or omit any information from the migrated files or existing MEMORY.qmd content.
+4. Preserve every user fact, preference, personality note, durable memory, caveat, example, and detail. If you are unsure whether something matters, keep it.
+5. You may remove exact duplicates, but only when the same information is truly repeated with no extra nuance.
+6. Do not paste files as one big unordered dump; reorganize the content so future agents can use it directly while preserving all information.
+7. Remove or update active workspace references that point future agents to durable memory sources outside MEMORY.qmd or the built-in QMD memory tool.
+8. Do not edit or delete _migrated/ except to read it for context.
+9. Keep edits careful and summarize what changed.`
 	)
 
 if (firstLaunch) {
