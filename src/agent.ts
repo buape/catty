@@ -616,7 +616,8 @@ ${content || "[no text content]"}
 		[gateway]
 	)
 
-	const server = createServer(client, { port: 3000 })
+	const port = Number(config.port ?? 7990)
+	const server = createServer(client, { port })
 	let heartbeatQueue = Promise.resolve()
 
 	const heartbeatInterval = setInterval(
@@ -680,7 +681,7 @@ ${content || "[no text content]"}
 		(config.heartbeat?.intervalMinutes ?? 60) * 60 * 1000
 	)
 
-	console.log("Catty running at http://localhost")
+	console.log(`Catty running at http://localhost:${port}`)
 	console.log(`Workspace: ${workspace}`)
 	console.log(`Heartbeat: ${heartbeatPath}`)
 

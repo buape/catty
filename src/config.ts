@@ -120,6 +120,7 @@ if (storedConfigVersion < configVersion) {
 export const config = Bun.TOML.parse(configText) as {
 	token: string
 	verbose: boolean
+	port?: number
 	pi?: {
 		workspace?: string
 		agentDir?: string

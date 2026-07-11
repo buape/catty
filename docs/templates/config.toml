@@ -10,6 +10,9 @@ token = "your-discord-bot-token"
 # Whether Catty sends all messages or just the responses
 verbose = false
 
+# Local HTTP server port. Use a unique port per named service running at the same time.
+# port = 7990
+
 # pi workspace/session/model settings.
 [pi]
 # Workspace directory Catty exposes to pi. Default: ~/.catty/workspace.

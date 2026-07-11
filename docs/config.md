@@ -33,8 +33,10 @@ token = "your-discord-bot-token"
 ## Full config reference
 
 ```toml
-[discord]
 token = "your-discord-bot-token"
+verbose = false
+# Use a unique port per named service running at the same time.
+# port = 7990
 
 [pi]
 # workspace = "~/.catty/workspace"
@@ -88,7 +90,7 @@ Removed/non-configurable values:
 - `discord.baseUrl` is not configurable. Carbon uses `http://localhost`.
 - `discord.clientId` is not configurable. Catty fetches the app ID from Discord using the bot token.
 - `discord.publicKey` is not configurable. Catty fetches the public key from Discord using the bot token.
-- `discord.port` is not configurable. The Bun server listens on `3000`.
+- `discord.port` is not used. Use top-level `port` instead.
 - `discord.deploySecret` is not used because the deploy route is disabled.
 - `discord.totalShards` is not used because Catty uses Carbon's `GatewayPlugin`, not `ShardingPlugin`.
 
@@ -102,7 +104,7 @@ Removed/non-configurable values:
 - Named workspace: `~/.catty/NAME/workspace`
 - If named agents exist and no unnamed root agent exists, running without `--name`/`--config` prints help instead of creating `~/.catty/config.toml`.
 - Carbon base URL: `http://localhost`
-- HTTP port: `3000` (not configurable)
+- HTTP port: `7990`
 - Response mode: `all`
 - Prefix mode prefix: `!catty`
 - Heartbeat enabled: `false`
