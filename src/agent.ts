@@ -110,18 +110,44 @@ export async function startCatty(options?: { newSession?: boolean }) {
 			})
 		if (modelFallbackMessage)
 			console.log(`[migration] ${modelFallbackMessage}`)
+		const unsubscribe = migrationSession.subscribe((event) => {
+			if (
+				event.type === "message_update" &&
+				event.assistantMessageEvent.type === "text_delta"
+			)
+				console.log(
+					`[migration] text_delta: ${event.assistantMessageEvent.delta}`
+				)
+			else if (
+				event.type === "message_update" &&
+				event.assistantMessageEvent.type === "thinking_delta"
+			)
+				console.log(
+					`[migration] thinking_delta: ${event.assistantMessageEvent.delta}`
+				)
+			else
+				try {
+					console.log("[migration] event", JSON.stringify(event))
+				} catch {
+					console.log("[migration] event", event.type)
+				}
+		})
 		try {
 			for (const prompt of prompts) {
+				const migrationPrompt = `Catty post-migration side session. This is trusted migration guidance, not a Discord message. Complete the requested workspace cleanup, then summarize what changed.\n\n${prompt.prompt}`
 				console.log(`[migration] prompt: ${prompt.title}`)
-				await migrationSession.prompt(
-					`Catty post-migration side session. This is trusted migration guidance, not a Discord message. Complete the requested workspace cleanup, then summarize what changed.\n\n${prompt.prompt}`
+				console.log(
+					`[migration] exact prompt:\n---\n${migrationPrompt}\n---`
 				)
+				await migrationSession.prompt(migrationPrompt)
 			}
 			clearPostMigrationPrompts()
 		} finally {
+			unsubscribe()
 			migrationSession.dispose()
 		}
 		await resourceLoader.reload()
+		console.log("[migration] finished; starting main session")
 	}
 	await runPostMigrationPrompts()
 
