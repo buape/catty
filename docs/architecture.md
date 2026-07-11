@@ -7,9 +7,9 @@ Catty is the project/harness. The running assistant is an agent inside Catty; du
 ## Runtime flow
 
 1. Load `~/.catty/config.toml` unless `--config` is passed.
-2. If this is first launch, write the example config plus workspace `AGENTS.md` and `MEMORY.qmd`, print the paths, and exit.
+2. If this is first launch, write the example config plus workspace `AGENTS.md`, `MEMORY.qmd`, and `.gitignore`, print the paths, and exit.
 3. Run config migrations when the embedded config version increases.
-4. Queue any post-migration agent prompts in workspace `.catty/post-migration-prompts.jsonl`.
+4. Queue any post-migration agent prompts in workspace `.internal/post-migration-prompts.jsonl`.
 5. Register the QMD-backed memory tool and run queued post-migration prompts in a separate in-memory pi side session.
 6. Reload workspace resources after successful post-migration prompts.
 7. Create one pi `AgentSession` for the configured workspace, resuming the latest session unless `--new` is passed.
@@ -37,15 +37,15 @@ No maps keyed by channel, user, guild, thread, or role. No session pools. No ses
 
 ## Config
 
-The example config is written automatically on first launch, along with `AGENTS.md` and the canonical workspace `MEMORY.qmd`. Catty exits immediately so the user can fill them out before the first real run.
+The example config is written automatically on first launch, along with `AGENTS.md`, `.gitignore`, and the canonical workspace `MEMORY.qmd`. Catty exits immediately so the user can fill them out before the first real run.
 
-Config contains a `version = 1` schema marker. `src/config.ts` has a hardcoded config version and a simple text migration table. If the code version increases, migrations run before TOML parsing and update the version line.
+Config contains a `version = 2` schema marker. `src/config.ts` has a hardcoded config version and a simple text migration table. If the code version increases, migrations run before TOML parsing and update the version line.
 
 Full config reference lives in `docs/config.md`.
 
 ## Post-migration agent prompts
 
-Migrations that need semantic cleanup can call `queuePostMigrationPrompt(title, prompt)` from `src/config.ts`. Catty stores prompts as JSONL in workspace `.catty/post-migration-prompts.jsonl`.
+Migrations that need semantic cleanup can call `queuePostMigrationPrompt(title, prompt)` from `src/config.ts`. Catty stores prompts as JSONL in workspace `.internal/post-migration-prompts.jsonl`.
 
 On startup, after resources and the memory tool are available but before the main/resumed Discord session is created, Catty drains the queue in a separate `SessionManager.inMemory(workspace)` side session. If every prompt succeeds, Catty clears the queue and reloads workspace resources so the main session sees any file edits. If the side session fails, the queue remains for retry on the next launch.
 

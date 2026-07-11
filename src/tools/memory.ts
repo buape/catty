@@ -62,7 +62,7 @@ class MemoryTool extends Tool<typeof memorySchema> {
 
 	private async getStore() {
 		if (this.store) return this.store
-		const dbPath = join(this.workspace, ".catty", "qmd.sqlite")
+		const dbPath = join(this.workspace, ".internal", "qmd.sqlite")
 		mkdirSync(dirname(dbPath), { recursive: true })
 		this.store = await createStore({
 			dbPath,

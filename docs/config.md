@@ -19,6 +19,7 @@ First-launch workspace files:
 
 - `AGENTS.md`
 - `MEMORY.qmd`
+- `.gitignore`
 - `skills/`
 - `.pi/extensions/`
 
@@ -71,7 +72,7 @@ token = "your-discord-bot-token"
 # intervalMinutes = 60
 
 # DO NOT CHANGE THIS VALUE
-version = 1
+version = 2
 ```
 
 ## Required fields
@@ -96,6 +97,7 @@ Removed/non-configurable values:
 - Config path: `~/.catty/config.toml`
 - Workspace: `~/.catty/workspace`
 - Memory file: `~/.catty/workspace/MEMORY.qmd`
+- Internal workspace state: `~/.catty/workspace/.internal/`
 - Named config path: `~/.catty/NAME/config.toml`
 - Named workspace: `~/.catty/NAME/workspace`
 - If named agents exist and no unnamed root agent exists, running without `--name`/`--config` prints help instead of creating `~/.catty/config.toml`.
@@ -199,6 +201,6 @@ Catty always uses one canonical memory file:
 
 Catty creates it automatically as an empty file when missing and loads it into pi as a native context file. There is no memory-path setting. Durable user context, preferences, reusable notes, and agent personality belong in `MEMORY.qmd`; workspace operating rules belong in `AGENTS.md`.
 
-Catty also exposes a built-in `memory` tool backed by QMD (`@tobilu/qmd`). The tool indexes `MEMORY.qmd` into workspace `.catty/qmd.sqlite`, updates the QMD index before recall, and supports search, hybrid query, get, append, update, status, and embed actions. Catty predownloads the QMD query-expansion and embedding models at startup so the first Discord memory query does not block on model downloads.
+Catty also exposes a built-in `memory` tool backed by QMD (`@tobilu/qmd`). The tool indexes `MEMORY.qmd` into workspace `.internal/qmd.sqlite`, updates the QMD index before recall, and supports search, hybrid query, get, append, update, status, and embed actions. Catty predownloads the QMD query-expansion and embedding models at startup so the first Discord memory query does not block on model downloads.
 
-On upgrade, Catty may stage root workspace Markdown files and migration artifacts under `_migrated/`, then queue a post-migration agent prompt in `.catty/post-migration-prompts.jsonl`. On the next startup phase Catty runs that prompt in a separate in-memory side session so durable memory is organized into clean `MEMORY.qmd` content without condensation or information loss.
+On upgrade, Catty may stage root workspace Markdown files and migration artifacts under `_migrated/`, then queue a post-migration agent prompt in `.internal/post-migration-prompts.jsonl`. On the next startup phase Catty runs that prompt in a separate in-memory side session so durable memory is organized into clean `MEMORY.qmd` content without condensation or information loss.

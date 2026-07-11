@@ -5,13 +5,14 @@ import {
 	readdirSync,
 	readFileSync,
 	renameSync,
+	rmdirSync,
 	writeFileSync
 } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, extname, join, relative, resolve } from "node:path"
 import templateConfig from "../docs/templates/config.toml" with { type: "text" }
 
-const configVersion = 1
+const configVersion = 2
 
 const cattyDir = join(homedir(), ".catty")
 const nameArgIndex = Bun.argv.indexOf("--name")
@@ -91,7 +92,8 @@ const setConfigVersion = (text: string, version: number) => {
 }
 
 const migrations: Record<number, (text: string) => string> = {
-	1: (text) => text
+	1: (text) => text,
+	2: (text) => text
 }
 
 const storedConfigVersion = getConfigVersion(configText) ?? 0
@@ -161,16 +163,46 @@ export const workspace = resolve(
 if (!usingDefaultConfig && config.pi?.workspace === undefined)
 	assertUnmixedDefaultLayout()
 export const memoryPath = join(workspace, "MEMORY.qmd")
-export const cattyWorkspaceDir = join(workspace, ".catty")
+const legacyCattyWorkspaceDir = join(workspace, ".catty")
+export const cattyWorkspaceDir = join(workspace, ".internal")
 export const postMigrationPromptsPath = join(
 	cattyWorkspaceDir,
 	"post-migration-prompts.jsonl"
 )
 
 mkdirSync(workspace, { recursive: true })
+if (existsSync(legacyCattyWorkspaceDir)) {
+	if (!existsSync(cattyWorkspaceDir)) {
+		renameSync(legacyCattyWorkspaceDir, cattyWorkspaceDir)
+	} else if (
+		lstatSync(legacyCattyWorkspaceDir).isDirectory() &&
+		lstatSync(cattyWorkspaceDir).isDirectory()
+	) {
+		for (const entry of readdirSync(legacyCattyWorkspaceDir)) {
+			const oldPath = join(legacyCattyWorkspaceDir, entry)
+			const newPath = join(cattyWorkspaceDir, entry)
+			if (!existsSync(newPath)) renameSync(oldPath, newPath)
+		}
+		if (readdirSync(legacyCattyWorkspaceDir).length === 0)
+			rmdirSync(legacyCattyWorkspaceDir)
+	}
+}
 mkdirSync(cattyWorkspaceDir, { recursive: true })
 mkdirSync(join(workspace, "skills"), { recursive: true })
 mkdirSync(join(workspace, ".pi/extensions"), { recursive: true })
+
+const workspaceGitignorePath = join(workspace, ".gitignore")
+if (existsSync(workspaceGitignorePath)) {
+	const gitignore = readFileSync(workspaceGitignorePath, "utf8")
+	const lines = gitignore.split("\n")
+	if (!lines.includes(".internal/"))
+		writeFileSync(
+			workspaceGitignorePath,
+			`${gitignore.trimEnd()}\n.internal/\n`
+		)
+} else {
+	writeFileSync(workspaceGitignorePath, ".internal/\n")
+}
 
 if (!existsSync(join(workspace, "AGENTS.md"))) {
 	writeFileSync(
@@ -307,6 +339,7 @@ if (firstLaunch) {
 	console.log(`- ${configPath}`)
 	console.log(`- ${join(workspace, "AGENTS.md")}`)
 	console.log(`- ${memoryPath}`)
+	console.log(`- ${workspaceGitignorePath}`)
 	console.log("")
 	console.log(
 		"Fill out the config, then restart Catty. Memory starts empty for now."
