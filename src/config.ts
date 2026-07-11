@@ -13,12 +13,20 @@ import { dirname, extname, join, relative, resolve } from "node:path"
 const configVersion = 1
 
 const cattyDir = join(homedir(), ".catty")
-const defaultConfigPath = join(cattyDir, "config.toml")
-const defaultWorkspace = join(cattyDir, "workspace")
 const templateConfigPath = join(
 	import.meta.dirname,
 	"../docs/templates/config.toml"
 )
+const nameArgIndex = Bun.argv.indexOf("--name")
+export const agentName =
+	nameArgIndex === -1 ? undefined : (Bun.argv[nameArgIndex + 1] ?? "")
+if (agentName !== undefined && !/^[a-zA-Z0-9_-]+$/.test(agentName))
+	throw new Error(
+		"--name must contain only letters, numbers, underscores, or hyphens"
+	)
+const agentCattyDir = agentName ? join(cattyDir, agentName) : cattyDir
+const defaultConfigPath = join(agentCattyDir, "config.toml")
+const defaultWorkspace = join(agentCattyDir, "workspace")
 const configArgIndex = Bun.argv.indexOf("--config")
 
 export const configPath = resolve(

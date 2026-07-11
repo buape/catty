@@ -3,16 +3,25 @@ import { homedir, platform, userInfo } from "node:os"
 import { dirname, join } from "node:path"
 import { AuthStorage, getAgentDir } from "@earendil-works/pi-coding-agent"
 import { startCatty } from "./agent"
-import { config, configPath, workspace } from "./config"
+import { agentName, config, configPath, workspace } from "./config"
 
 const agentDir = String(config.pi?.agentDir ?? getAgentDir()).replace(
 	/^~(?=$|\/)/,
 	homedir()
 )
-const serviceLabel = "com.catty.agent"
+const serviceName = agentName ?? "agent"
+const serviceLabel = `com.catty.${serviceName}`
+const systemdService = agentName
+	? `catty-${serviceName}.service`
+	: "catty.service"
+const devMode = Bun.argv.includes("--dev")
+const devRoot = join(homedir(), "Developer/catty")
 const logDir = join(homedir(), "Library/Logs/catty")
-const logPath = join(logDir, "catty.log")
-const errorLogPath = join(logDir, "catty.error.log")
+const logPath = join(logDir, agentName ? `${serviceName}.log` : "catty.log")
+const errorLogPath = join(
+	logDir,
+	agentName ? `${serviceName}.error.log` : "catty.error.log"
+)
 
 const run = async (command: string[]) => {
 	console.log(`$ ${command.join(" ")}`)
@@ -29,10 +38,15 @@ const cattyBin = () =>
 		? "/opt/homebrew/bin/catty"
 		: Bun.argv[0]
 
+const bunBin = () =>
+	process.env.BUN_INSTALL
+		? join(process.env.BUN_INSTALL, "bin/bun")
+		: "/opt/homebrew/bin/bun"
+
 const serviceFile = () =>
 	platform() === "darwin"
-		? join(homedir(), "Library/LaunchAgents/com.catty.agent.plist")
-		: join(homedir(), ".config/systemd/user/catty.service")
+		? join(homedir(), "Library/LaunchAgents", `${serviceLabel}.plist`)
+		: join(homedir(), ".config/systemd/user", systemdService)
 
 const serviceTarget = () => `gui/${userInfo().uid}/${serviceLabel}`
 
@@ -40,7 +54,7 @@ const printHelp = () => {
 	console.log(`Catty
 
 Usage:
-  catty [--new] [--config PATH] Start Catty in the foreground
+  catty [--new] [--name NAME] [--config PATH] Start Catty in the foreground
   catty auth login [provider]   Login to pi auth provider
   catty service install         Install the user service
   catty service uninstall       Uninstall the user service
@@ -53,6 +67,8 @@ Usage:
 
 Options:
   --config PATH                 Use a custom config path
+  --name NAME                   Use a named agent config/service namespace
+  --dev                         Install service to run bun start in ~/Developer/catty
   --new                         Start a fresh pi session instead of resuming
 `)
 }
@@ -60,6 +76,20 @@ Options:
 const installService = async () => {
 	mkdirSync(dirname(serviceFile()), { recursive: true })
 	mkdirSync(logDir, { recursive: true })
+	const nameArgs = agentName
+		? `
+    <string>--name</string>
+    <string>${agentName}</string>`
+		: ""
+	const devArgs = devMode
+		? `<string>${bunBin()}</string>
+    <string>start</string>
+    <string>--</string>${nameArgs}`
+		: `<string>${cattyBin()}</string>${nameArgs}`
+	const systemdCommand = devMode
+		? `${bunBin()} start --${agentName ? ` --name ${agentName}` : ""} --config ${configPath}`
+		: `${cattyBin()}${agentName ? ` --name ${agentName}` : ""} --config ${configPath}`
+	const workingDirectory = devMode ? devRoot : workspace
 
 	if (platform() === "darwin") {
 		writeFileSync(
@@ -73,13 +103,13 @@ const installService = async () => {
 
   <key>ProgramArguments</key>
   <array>
-    <string>${cattyBin()}</string>
+    ${devArgs}
     <string>--config</string>
     <string>${configPath}</string>
   </array>
 
   <key>WorkingDirectory</key>
-  <string>${workspace}</string>
+  <string>${workingDirectory}</string>
 
   <key>RunAtLoad</key>
   <true/>
@@ -116,8 +146,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=${workspace}
-ExecStart=${cattyBin()} --config ${configPath}
+WorkingDirectory=${workingDirectory}
+ExecStart=${systemdCommand}
 Restart=on-failure
 RestartSec=5
 
@@ -126,7 +156,7 @@ WantedBy=default.target
 `
 	)
 	await run(["systemctl", "--user", "daemon-reload"])
-	await run(["systemctl", "--user", "enable", "catty.service"])
+	await run(["systemctl", "--user", "enable", systemdService])
 	console.log(`Installed ${serviceFile()}`)
 }
 
@@ -161,13 +191,13 @@ const runService = async (action: string) => {
 			"--user",
 			"disable",
 			"--now",
-			"catty.service"
+			systemdService
 		]).catch(() => {})
 		if (existsSync(serviceFile())) await run(["rm", serviceFile()])
 		await run(["systemctl", "--user", "daemon-reload"])
 		return
 	}
-	await run(["systemctl", "--user", action, "catty.service"])
+	await run(["systemctl", "--user", action, systemdService])
 }
 
 const showLogs = async (follow: boolean) => {
@@ -181,17 +211,17 @@ const showLogs = async (follow: boolean) => {
 	}
 	await run(
 		follow
-			? ["journalctl", "--user", "-u", "catty.service", "-f"]
-			: ["journalctl", "--user", "-u", "catty.service", "-n", "200"]
+			? ["journalctl", "--user", "-u", systemdService, "-f"]
+			: ["journalctl", "--user", "-u", systemdService, "-n", "200"]
 	)
 }
 
 const args = Bun.argv.slice(2)
-const commands = ["auth", "service", "help"]
 const command = args.find(
 	(arg, index) =>
 		!arg.startsWith("--") &&
-		(args[index - 1] !== "--config" || commands.includes(arg))
+		args[index - 1] !== "--config" &&
+		args[index - 1] !== "--name"
 )
 const wantsHelp =
 	args.includes("help") || args.includes("--help") || args.includes("-h")

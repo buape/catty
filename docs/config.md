@@ -9,6 +9,8 @@ Default path:
 CLI options:
 
 - `--config PATH` — use a custom config path.
+- `--name NAME` — use a named agent namespace. Without `--config`, config lives at `~/.catty/NAME/config.toml` and workspace at `~/.catty/NAME/workspace`. Services/logs are named separately too.
+- `--dev` — when installing a service, generate it to run `bun start -- ...` from `~/Developer/catty` instead of the installed Catty binary.
 - `--new` — start a fresh pi session instead of resuming the latest workspace session.
 
 On first launch, Catty writes `~/.catty/config.toml` from `docs/templates/config.toml`, creates an empty workspace QMD memory file and native pi workspace directories, prints the created paths, then exits. Fill out the config and restart Catty.
@@ -94,6 +96,8 @@ Removed/non-configurable values:
 - Config path: `~/.catty/config.toml`
 - Workspace: `~/.catty/workspace`
 - Memory file: `~/.catty/workspace/MEMORY.qmd`
+- Named config path: `~/.catty/NAME/config.toml`
+- Named workspace: `~/.catty/NAME/workspace`
 - Carbon base URL: `http://localhost`
 - HTTP port: `3000` (not configurable)
 - Response mode: `all`

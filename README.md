@@ -57,6 +57,19 @@ For launchd/systemd, run `catty auth login` as the same OS user that runs the se
 catty
 ```
 
+Named agent namespace:
+
+```bash
+catty --name work
+```
+
+This uses `~/.catty/work/config.toml`, `~/.catty/work/workspace`, and separate service/log names. Manage its service with the same name flag:
+
+```bash
+catty --name work service install
+catty --name work service logs --follow
+```
+
 Custom config path:
 
 ```bash
@@ -101,7 +114,13 @@ Templates:
 - macOS launchd: `services/com.catty.agent.plist`
 - Linux systemd: `services/catty.service`
 
-The macOS template assumes the Homebrew binary path and `~/.catty/config.toml`. Edit paths before installing it.
+The macOS template assumes the Homebrew binary path and `~/.catty/config.toml`. Edit paths before installing it. For multiple service agents, install/manage each one with `catty --name NAME service ...`.
+
+For development services, pass `--dev` while installing. The generated service runs `bun start -- ...` from `~/Developer/catty` instead of the installed Catty binary:
+
+```bash
+catty --dev --name work service install
+```
 
 ## Development
 
