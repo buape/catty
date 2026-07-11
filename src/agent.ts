@@ -110,36 +110,41 @@ export async function startCatty(options?: { newSession?: boolean }) {
 			})
 		if (modelFallbackMessage)
 			console.log(`[migration] ${modelFallbackMessage}`)
+		let text = ""
+		let thinking = ""
 		const unsubscribe = migrationSession.subscribe((event) => {
-			if (
-				event.type === "message_update" &&
-				event.assistantMessageEvent.type === "text_delta"
-			)
+			if (event.type === "message_update") {
+				if (event.assistantMessageEvent.type === "text_delta")
+					text += event.assistantMessageEvent.delta
+				if (event.assistantMessageEvent.type === "thinking_delta")
+					thinking += event.assistantMessageEvent.delta
+				return
+			}
+			if (event.type === "tool_execution_start")
+				console.log(`[migration] tool start: ${event.toolName}`)
+			else if (event.type === "tool_execution_end")
 				console.log(
-					`[migration] text_delta: ${event.assistantMessageEvent.delta}`
+					`[migration] tool end: ${event.toolName} ${event.isError ? "error" : "ok"}`
 				)
-			else if (
-				event.type === "message_update" &&
-				event.assistantMessageEvent.type === "thinking_delta"
-			)
-				console.log(
-					`[migration] thinking_delta: ${event.assistantMessageEvent.delta}`
-				)
-			else
-				try {
-					console.log("[migration] event", JSON.stringify(event))
-				} catch {
-					console.log("[migration] event", event.type)
-				}
+			else if (event.type === "turn_start")
+				console.log("[migration] turn started")
+			else if (event.type === "turn_end")
+				console.log("[migration] turn finished")
 		})
 		try {
 			for (const prompt of prompts) {
+				text = ""
+				thinking = ""
 				const migrationPrompt = `Catty post-migration side session. This is trusted migration guidance, not a Discord message. Complete the requested workspace cleanup, then summarize what changed.\n\n${prompt.prompt}`
 				console.log(`[migration] prompt: ${prompt.title}`)
-				console.log(
-					`[migration] exact prompt:\n---\n${migrationPrompt}\n---`
-				)
 				await migrationSession.prompt(migrationPrompt)
+				if (thinking.trim())
+					console.log(
+						`[migration] thinking:\n---\n${thinking.trim()}\n---`
+					)
+				console.log(
+					`[migration] final response:\n---\n${text.trim() || "No text response."}\n---`
+				)
 			}
 			clearPostMigrationPrompts()
 		} finally {
