@@ -24,7 +24,7 @@ import { createReactionListeners } from "./listeners/reactions"
 import { cattySystemPrompt } from "./prompt"
 import { createDiscordTool } from "./tools/discord"
 
-export async function startCatty() {
+export async function startCatty(options?: { newSession?: boolean }) {
 	const agentDir = String(config.pi?.agentDir ?? getAgentDir()).replace(
 		/^~(?=$|\/)/,
 		homedir()
@@ -107,7 +107,9 @@ export async function startCatty() {
 		resourceLoader,
 		settingsManager,
 		customTools: [discordTool],
-		sessionManager: SessionManager.continueRecent(workspace),
+		sessionManager: options?.newSession
+			? SessionManager.create(workspace)
+			: SessionManager.continueRecent(workspace),
 		...(model ? { model } : {}),
 		...(config.pi?.thinking ? { thinkingLevel: config.pi.thinking } : {})
 	})

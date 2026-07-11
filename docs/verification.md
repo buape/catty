@@ -75,15 +75,17 @@ Matches required behavior:
 
 ## Single-session inspection
 
-`src/index.ts` creates one pi session at startup:
+`src/agent.ts` creates one pi session at startup:
 
 ```ts
 const { session } = await createAgentSession({
-  sessionManager: SessionManager.create(workspace)
+  sessionManager: options?.newSession
+    ? SessionManager.create(workspace)
+    : SessionManager.continueRecent(workspace)
 })
 ```
 
-The Carbon message listener reuses that `session` through one `piQueue`. No session maps, channel maps, user maps, guild maps, or per-message session factories exist.
+The Carbon message listener reuses that `session` through one in-process queue. No session maps, channel maps, user maps, guild maps, or per-message session factories exist.
 
 ## KISS inspection
 

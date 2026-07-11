@@ -6,6 +6,11 @@ Default path:
 ~/.catty/config.toml
 ```
 
+CLI options:
+
+- `--config PATH` — use a custom config path.
+- `--new` — start a fresh pi session instead of resuming the latest workspace session.
+
 On first launch, Catty writes `~/.catty/config.toml` from `docs/templates/config.toml`, creates the workspace QMD memory file and native pi workspace directories, prints the created paths, then exits. Fill out the files and restart Catty.
 
 First-launch workspace files:

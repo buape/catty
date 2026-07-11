@@ -9,7 +9,7 @@ Catty is the project/harness. The running assistant is an agent inside Catty; du
 1. Load `~/.catty/config.toml` unless `--config` is passed.
 2. If this is first launch, write the example config plus workspace `AGENTS.md` and `MEMORY.qmd`, print the paths, and exit.
 3. Run config migrations when the embedded config version increases.
-4. Create one pi `AgentSession` for the configured workspace.
+4. Create one pi `AgentSession` for the configured workspace, resuming the latest session unless `--new` is passed.
 5. Start one Carbon `Client` with a `MessageCreateListener`.
 6. Carbon receives Discord `MESSAGE_CREATE` events through `GatewayPlugin`.
 7. Listener logs the received Discord message.
@@ -24,7 +24,7 @@ Catty is the project/harness. The running assistant is an agent inside Catty; du
 
 ## One-session rule
 
-There is exactly one pi session object for the process. It is created at startup and reused for every accepted Discord message and heartbeat prompt.
+There is exactly one pi session object for the process. It is created at startup and reused for every accepted Discord message and heartbeat prompt. By default this resumes the latest workspace session; `--new` forces a fresh session object.
 
 No maps keyed by channel, user, guild, thread, or role. No session pools. No session factory inside the message listener.
 
@@ -50,7 +50,7 @@ Catty's harness prompt is embedded in `src/prompt.ts`. End-user memory and resou
 Use the SDK:
 
 - `DefaultResourceLoader({ cwd: workspace, agentDir, systemPromptOverride, agentsFilesOverride })`
-- `SessionManager.create(workspace)`
+- `SessionManager.continueRecent(workspace)` by default, or `SessionManager.create(workspace)` with `--new`
 - `createAgentSession({ cwd: workspace, resourceLoader, sessionManager })`
 
 Keep the bridge minimal. Subscribe during a prompt, collect `text_delta`, unsubscribe after the prompt completes, then reply.

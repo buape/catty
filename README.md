@@ -63,6 +63,12 @@ Custom config path:
 catty --config /path/to/config.toml
 ```
 
+Start a fresh pi session instead of resuming the latest one:
+
+```bash
+catty --new
+```
+
 ## Workspace files
 
 Created under `~/.catty/workspace` by default:
@@ -79,7 +85,7 @@ Catty's own harness system prompt is embedded in code at `src/prompt.ts`.
 ## Runtime behavior
 
 - One Catty process uses one shared pi session.
-- On startup, Catty resumes the most recent pi session for the workspace, or creates one if none exists.
+- On startup, Catty resumes the most recent pi session for the workspace, or creates one if none exists. Pass `--new` to force a fresh pi session.
 - Discord messages are queued through that one session.
 - Reply context is included when a Discord message replies to another message.
 - User-provided Discord content is wrapped in per-message untrusted begin/end blocks before pi sees it.

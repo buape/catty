@@ -40,7 +40,7 @@ const printHelp = () => {
 	console.log(`Catty
 
 Usage:
-  catty                         Start Catty in the foreground
+  catty [--new] [--config PATH] Start Catty in the foreground
   catty auth login [provider]   Login to pi auth provider
   catty service install         Install the user service
   catty service uninstall       Uninstall the user service
@@ -53,6 +53,7 @@ Usage:
 
 Options:
   --config PATH                 Use a custom config path
+  --new                         Start a fresh pi session instead of resuming
 `)
 }
 
@@ -186,11 +187,20 @@ const showLogs = async (follow: boolean) => {
 }
 
 const args = Bun.argv.slice(2)
-const command = args.find((arg) => !arg.startsWith("--"))
+const commands = ["auth", "service", "help"]
+const command = args.find(
+	(arg, index) =>
+		!arg.startsWith("--") &&
+		(args[index - 1] !== "--config" || commands.includes(arg))
+)
+const wantsHelp =
+	args.includes("help") || args.includes("--help") || args.includes("-h")
 
-if (!command) {
-	await startCatty()
-} else if (command === "help" || command === "--help" || command === "-h") {
+if (wantsHelp) {
+	printHelp()
+} else if (!command) {
+	await startCatty({ newSession: args.includes("--new") })
+} else if (command === "help") {
 	printHelp()
 } else if (command === "auth" && args[args.indexOf("auth") + 1] === "login") {
 	const provider = args[args.indexOf("auth") + 2] ?? "openai-codex"
