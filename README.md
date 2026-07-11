@@ -12,7 +12,7 @@ brew install buape/tap/catty
 
 ## First launch
 
-Run Catty once to create the default config and workspace memory, then exit:
+Run Catty once to create the default config and empty workspace memory file, then exit:
 
 ```bash
 catty
@@ -24,7 +24,7 @@ Catty creates:
 - Workspace: `~/.catty/workspace`
 - Workspace files: `AGENTS.md`, `MEMORY.qmd`
 
-Fill out the generated config and QMD memory file, then restart Catty.
+Fill out the generated config, then restart Catty. Memory starts empty for now.
 
 At minimum, set the Discord bot token:
 

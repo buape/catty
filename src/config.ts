@@ -177,36 +177,22 @@ export const clearPostMigrationPrompts = () => {
 }
 
 if (!existsSync(memoryPath)) {
-	writeFileSync(
-		memoryPath,
-		`---
-title: Catty Memory
-format: gfm
----
-
-# Catty Memory
-
-This is Catty's canonical memory file. Keep durable user context, agent identity, preferences, and reusable notes here.
-
-## Primary User
-
-Describe the primary user of this Catty workspace.
-
-## Agent Personality
-
-Name the agent here, then describe how this agent should behave.
-
-## Durable Notes
-
-- Add stable preferences, facts, and recurring project context here.
-`
-	)
+	writeFileSync(memoryPath, "")
 }
 
 const legacyMemoryFiles = [
 	[join(workspace, "USER.md"), "Primary User"],
 	[join(workspace, "ME.md"), "Agent Personality"]
 ]
+for (const entry of readdirSync(workspace, { withFileTypes: true })) {
+	const path = join(workspace, entry.name)
+	if (
+		entry.isFile() &&
+		/\.md$/i.test(entry.name) &&
+		!new Set(["AGENTS.md", "MEMORY.qmd", "HEARTBEAT.md"]).has(entry.name)
+	)
+		legacyMemoryFiles.push([path, "Workspace Markdown"])
+}
 const legacyMemoryDirs = []
 const seenLegacyMemoryDirs = new Set<string>()
 for (const path of ["memory", "memories", "Memory", "Memories"].map((name) =>
@@ -235,7 +221,7 @@ for (const dir of legacyMemoryDirs) {
 }
 
 const migratedMemoryFiles = []
-for (const [index, [path]] of legacyMemoryFiles.entries()) {
+for (const [path] of legacyMemoryFiles) {
 	if (!existsSync(path)) continue
 	if (!lstatSync(path).isFile()) continue
 	migratedMemoryFiles.push([
@@ -243,7 +229,7 @@ for (const [index, [path]] of legacyMemoryFiles.entries()) {
 		join(
 			workspace,
 			"_migrated",
-			`memory-import-${index + 1}${extname(path) || ".md"}`
+			`memory-import-${migratedMemoryFiles.length + 1}${extname(path) || ".md"}`
 		)
 	])
 }
@@ -283,7 +269,7 @@ if (firstLaunch) {
 	console.log(`- ${memoryPath}`)
 	console.log("")
 	console.log(
-		"Fill out the config and workspace QMD memory file, then restart Catty."
+		"Fill out the config, then restart Catty. Memory starts empty for now."
 	)
 	process.exit(0)
 }

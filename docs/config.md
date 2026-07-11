@@ -11,7 +11,7 @@ CLI options:
 - `--config PATH` — use a custom config path.
 - `--new` — start a fresh pi session instead of resuming the latest workspace session.
 
-On first launch, Catty writes `~/.catty/config.toml` from `docs/templates/config.toml`, creates the workspace QMD memory file and native pi workspace directories, prints the created paths, then exits. Fill out the files and restart Catty.
+On first launch, Catty writes `~/.catty/config.toml` from `docs/templates/config.toml`, creates an empty workspace QMD memory file and native pi workspace directories, prints the created paths, then exits. Fill out the config and restart Catty.
 
 First-launch workspace files:
 
@@ -190,8 +190,8 @@ Catty always uses one canonical memory file:
 ~/.catty/workspace/MEMORY.qmd
 ```
 
-Catty creates it automatically when missing and loads it into pi as a native context file. There is no memory-path setting. Durable user context, preferences, reusable notes, and agent personality belong in `MEMORY.qmd`; workspace operating rules belong in `AGENTS.md`.
+Catty creates it automatically as an empty file when missing and loads it into pi as a native context file. There is no memory-path setting. Durable user context, preferences, reusable notes, and agent personality belong in `MEMORY.qmd`; workspace operating rules belong in `AGENTS.md`.
 
 Catty also exposes a built-in `memory` tool backed by QMD (`@tobilu/qmd`). The tool indexes `MEMORY.qmd` into workspace `.catty/qmd.sqlite`, updates the QMD index before recall, and supports search, hybrid query, get, append, update, status, and embed actions.
 
-On upgrade, Catty may stage migration artifacts under `_migrated/`, then queue a post-migration agent prompt in `.catty/post-migration-prompts.jsonl`. On the next startup phase Catty runs that prompt in a separate in-memory side session so durable memory is synthesized into clean `MEMORY.qmd` content.
+On upgrade, Catty may stage root workspace Markdown files and migration artifacts under `_migrated/`, then queue a post-migration agent prompt in `.catty/post-migration-prompts.jsonl`. On the next startup phase Catty runs that prompt in a separate in-memory side session so durable memory is synthesized into clean `MEMORY.qmd` content.
