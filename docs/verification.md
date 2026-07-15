@@ -75,19 +75,11 @@ Matches required behavior:
 
 ## Session inspection
 
-`src/agent.ts` creates one main Discord runtime pi session at startup:
+`src/agent.ts` creates one main Discord runtime pi session at startup. By default, the Carbon message listener reuses that `session` through one in-process queue.
 
-```ts
-const { session } = await createAgentSession({
-  sessionManager: options?.newSession
-    ? SessionManager.create(workspace)
-    : SessionManager.continueRecent(workspace)
-})
-```
+When `[pi].channelSessions = true`, `src/agent.ts` lazily creates a persistent session and queue per Discord channel so different channels can run simultaneously. The default remains a single shared session.
 
-The Carbon message listener reuses that `session` through one in-process queue. No session maps, channel maps, user maps, guild maps, or per-message session factories exist.
-
-Maintenance is the only allowed side-session path. Heartbeat uses a dedicated separate in-memory session by default unless `[heartbeat].session = "main"`. Queued migration prompts run before the main session starts via `SessionManager.inMemory(workspace)`, then Catty reloads resources and creates the main session.
+Heartbeat uses a dedicated separate in-memory session by default unless `[heartbeat].session = "main"`. Queued migration prompts run before the main session starts via `SessionManager.inMemory(workspace)`, then Catty reloads resources and creates the main session.
 
 ## KISS inspection
 

@@ -44,6 +44,7 @@ verbose = false
 # provider = "openai-codex"
 # model = "gpt-5.5"
 # thinking = "medium"
+# channelSessions = false
 
 [pi.apiKeys]
 # openai = "optional-openai-api-key"
@@ -74,7 +75,7 @@ verbose = false
 # intervalMinutes = 60
 
 # DO NOT CHANGE THIS VALUE
-version = 2
+version = 3
 ```
 
 ## Required fields
@@ -107,6 +108,7 @@ Removed/non-configurable values:
 - HTTP port: `7990`
 - Response mode: `all`
 - Prefix mode prefix: `!catty`
+- Channel sessions: `false` (all Discord channels share one main pi session)
 - Heartbeat enabled: `false`
 - Heartbeat file: `HEARTBEAT.md`
 - Heartbeat interval: `60` minutes
@@ -178,6 +180,17 @@ Empty `users` or `roles` arrays match nobody for that array. If both users and r
 - `prefix`: respond only when the message starts with the configured prefix.
 
 In `mention-or-reply` mode, direct mention pings include the previous 10 channel messages as untrusted context when the previous channel message was not from Catty.
+
+## Channel sessions
+
+By default, all Discord channels share one persistent main pi session and one queue. To allow different channels to run simultaneously, opt in to per-channel sessions:
+
+```toml
+[pi]
+channelSessions = true
+```
+
+When enabled, each Discord channel gets its own persistent pi session under Catty's internal workspace state. Messages and reaction context from the same channel are still queued in order for that channel.
 
 ## Heartbeat
 

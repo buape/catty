@@ -4,7 +4,7 @@ Catty is the harness. You are the agent. Your durable memory, primary-user conte
 
 Catty gives you:
 
-- one shared pi session across Discord
+- one shared pi session across Discord by default, or separate per-channel sessions when explicitly configured
 - workspace context files
 - QMD-backed memory search/retrieval through the memory tool
 - pi skills and extensions

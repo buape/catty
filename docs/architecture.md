@@ -1,6 +1,6 @@
 # Architecture
 
-KISS target: one Discord connector, one pi session, one TOML config file.
+KISS target: one Discord connector, one default pi session mode, one TOML config file.
 
 Catty is the project/harness. The running assistant is an agent inside Catty; durable memory, user context, name, and personality live in workspace `MEMORY.qmd`.
 
@@ -12,34 +12,35 @@ Catty is the project/harness. The running assistant is an agent inside Catty; du
 4. Queue any post-migration agent prompts in workspace `.internal/post-migration-prompts.jsonl`.
 5. Register the QMD-backed memory tool and run queued post-migration prompts in a separate in-memory pi side session.
 6. Reload workspace resources after successful post-migration prompts.
-7. Create one pi `AgentSession` for the configured workspace, resuming the latest session unless `--new` is passed.
+7. Create the main pi `AgentSession` for the configured workspace, resuming the latest session unless `--new` is passed.
 8. Register custom Discord and QMD-backed memory tools.
-9. Start one Carbon `Client` with a `MessageCreateListener`.
-10. Carbon receives Discord `MESSAGE_CREATE` events through `GatewayPlugin`.
-11. Listener logs the received Discord message.
-12. Listener ignores bot messages.
-13. Listener checks DM users or nested guild/channel user-role whitelists.
-14. Listener checks the channel response mode.
-15. Accepted message text and reply context are wrapped in untrusted begin/end blocks and sent to pi.
-16. Pi can use the `memory` tool to search/retrieve/update `MEMORY.qmd` through QMD.
-17. Discord typing is triggered while the queued pi prompt is waiting/running.
-18. Assistant text is collected from pi stream events.
-19. Listener replies in Discord and logs the final response.
-20. If heartbeat is enabled, the configured heartbeat file is prompted on the dedicated heartbeat session by default, or on the main queue when `[heartbeat].session = "main"`.
+9. If `[pi].channelSessions = true`, lazily create one persistent pi session and queue per Discord channel as messages arrive.
+10. Start one Carbon `Client` with a `MessageCreateListener`.
+11. Carbon receives Discord `MESSAGE_CREATE` events through `GatewayPlugin`.
+12. Listener logs the received Discord message.
+13. Listener ignores bot messages.
+14. Listener checks DM users or nested guild/channel user-role whitelists.
+15. Listener checks the channel response mode.
+16. Accepted message text and reply context are wrapped in untrusted begin/end blocks and sent to pi.
+17. Pi can use the `memory` tool to search/retrieve/update `MEMORY.qmd` through QMD.
+18. Discord typing is triggered while the queued pi prompt is waiting/running.
+19. Assistant text is collected from pi stream events.
+20. Listener replies in Discord and logs the final response.
+21. If heartbeat is enabled, the configured heartbeat file is prompted on the dedicated heartbeat session by default, or on the main queue when `[heartbeat].session = "main"`.
 
-## One-session rule
+## Session modes
 
-There is exactly one main pi session object for Discord runtime. It is created at startup and reused for every accepted Discord message. By default this resumes the latest workspace session; `--new` forces a fresh session object.
+By default there is exactly one main pi session object for Discord runtime. It is created at startup and reused for every accepted Discord message. This resumes the latest workspace session; `--new` forces a fresh session object.
+
+Set `[pi].channelSessions = true` to opt in to one persistent pi session and one queue per Discord channel. Channel sessions are created lazily under workspace internal state, so messages in different channels can run simultaneously while messages in the same channel stay ordered.
 
 Maintenance prompts are deliberate exceptions so they do not pollute resumed Discord conversation history: heartbeat uses a separate in-memory session by default, and post-migration prompts run before the main session starts in a separate in-memory side session. Set `[heartbeat].session = "main"` to put heartbeat back on the main queue.
-
-No maps keyed by channel, user, guild, thread, or role. No session pools. No session factory inside the message listener.
 
 ## Config
 
 The example config is written automatically on first launch, along with `AGENTS.md`, `.gitignore`, and the canonical workspace `MEMORY.qmd`. Catty exits immediately so the user can fill them out before the first real run.
 
-Config contains a `version = 2` schema marker. `src/config.ts` has a hardcoded config version and a simple text migration table. If the code version increases, migrations run before TOML parsing and update the version line.
+Config contains a `version = 3` schema marker. `src/config.ts` has a hardcoded config version and a simple text migration table. If the code version increases, migrations run before TOML parsing and update the version line.
 
 Full config reference lives in `docs/config.md`.
 

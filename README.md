@@ -98,9 +98,9 @@ Catty's own harness system prompt is embedded in code at `src/prompt.ts`.
 
 ## Runtime behavior
 
-- One Catty process uses one shared pi session.
+- By default, one Catty process uses one shared pi session.
 - On startup, Catty resumes the most recent pi session for the workspace, or creates one if none exists. Pass `--new` to force a fresh pi session.
-- Discord messages are queued through that one session.
+- Discord messages are queued through that one session by default. Set `[pi].channelSessions = true` to give each Discord channel its own persistent pi session and queue so channels can run simultaneously.
 - Reply context is included when a Discord message replies to another message.
 - User-provided Discord content is wrapped in per-message untrusted begin/end blocks before pi sees it.
 - Catty uses Discord typing indicators while pi is working instead of sending `Thinking…`.
