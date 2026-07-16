@@ -12,7 +12,7 @@ import { homedir } from "node:os"
 import { dirname, extname, join, relative, resolve } from "node:path"
 import templateConfig from "../docs/templates/config.toml" with { type: "text" }
 
-const configVersion = 2
+const configVersion = 3
 
 const cattyDir = join(homedir(), ".catty")
 const nameArgIndex = Bun.argv.indexOf("--name")
@@ -93,7 +93,8 @@ const setConfigVersion = (text: string, version: number) => {
 
 const migrations: Record<number, (text: string) => string> = {
 	1: (text) => text,
-	2: (text) => text
+	2: (text) => text,
+	3: (text) => text
 }
 
 const storedConfigVersion = getConfigVersion(configText) ?? 0
@@ -120,9 +121,11 @@ if (storedConfigVersion < configVersion) {
 export const config = Bun.TOML.parse(configText) as {
 	token: string
 	verbose: boolean
+	port?: number
 	pi?: {
 		workspace?: string
 		agentDir?: string
+		channelSessions?: boolean
 		provider?: string
 		model?: string
 		thinking?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh"

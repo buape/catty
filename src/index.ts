@@ -19,9 +19,11 @@ const cattyBin = () =>
 		: Bun.argv[0]
 
 const bunBin = () =>
-	process.env.BUN_INSTALL
-		? join(process.env.BUN_INSTALL, "bin/bun")
-		: "/opt/homebrew/bin/bun"
+	Bun.argv[0].endsWith("bun") || Bun.argv[0].endsWith("bun.exe")
+		? Bun.argv[0]
+		: process.env.BUN_INSTALL
+			? join(process.env.BUN_INSTALL, "bin/bun")
+			: "/opt/homebrew/bin/bun"
 
 const printHelp = () => {
 	console.log(`Catty

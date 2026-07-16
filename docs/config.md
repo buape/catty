@@ -33,8 +33,10 @@ token = "your-discord-bot-token"
 ## Full config reference
 
 ```toml
-[discord]
 token = "your-discord-bot-token"
+verbose = false
+# Use a unique port per named service running at the same time.
+# port = 7990
 
 [pi]
 # workspace = "~/.catty/workspace"
@@ -42,6 +44,7 @@ token = "your-discord-bot-token"
 # provider = "openai-codex"
 # model = "gpt-5.5"
 # thinking = "medium"
+# channelSessions = false
 
 [pi.apiKeys]
 # openai = "optional-openai-api-key"
@@ -72,7 +75,7 @@ token = "your-discord-bot-token"
 # intervalMinutes = 60
 
 # DO NOT CHANGE THIS VALUE
-version = 2
+version = 3
 ```
 
 ## Required fields
@@ -88,7 +91,7 @@ Removed/non-configurable values:
 - `discord.baseUrl` is not configurable. Carbon uses `http://localhost`.
 - `discord.clientId` is not configurable. Catty fetches the app ID from Discord using the bot token.
 - `discord.publicKey` is not configurable. Catty fetches the public key from Discord using the bot token.
-- `discord.port` is not configurable. The Bun server listens on `3000`.
+- `discord.port` is not used. Use top-level `port` instead.
 - `discord.deploySecret` is not used because the deploy route is disabled.
 - `discord.totalShards` is not used because Catty uses Carbon's `GatewayPlugin`, not `ShardingPlugin`.
 
@@ -102,9 +105,10 @@ Removed/non-configurable values:
 - Named workspace: `~/.catty/NAME/workspace`
 - If named agents exist and no unnamed root agent exists, running without `--name`/`--config` prints help instead of creating `~/.catty/config.toml`.
 - Carbon base URL: `http://localhost`
-- HTTP port: `3000` (not configurable)
+- HTTP port: `7990`
 - Response mode: `all`
 - Prefix mode prefix: `!catty`
+- Channel sessions: `false` (all Discord channels share one main pi session)
 - Heartbeat enabled: `false`
 - Heartbeat file: `HEARTBEAT.md`
 - Heartbeat interval: `60` minutes
@@ -176,6 +180,17 @@ Empty `users` or `roles` arrays match nobody for that array. If both users and r
 - `prefix`: respond only when the message starts with the configured prefix.
 
 In `mention-or-reply` mode, direct mention pings include the previous 10 channel messages as untrusted context when the previous channel message was not from Catty.
+
+## Channel sessions
+
+By default, all Discord channels share one persistent main pi session and one queue. To allow different channels to run simultaneously, opt in to per-channel sessions:
+
+```toml
+[pi]
+channelSessions = true
+```
+
+When enabled, each Discord channel gets its own persistent pi session under Catty's internal workspace state. Messages and reaction context from the same channel are still queued in order for that channel.
 
 ## Heartbeat
 

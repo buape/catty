@@ -12,6 +12,7 @@ import {
 import { createServer } from "@buape/carbon/adapters/bun"
 import { GatewayIntents, GatewayPlugin } from "@buape/carbon/gateway"
 import {
+	type AgentSession,
 	AuthStorage,
 	createAgentSession,
 	DefaultResourceLoader,
@@ -21,6 +22,7 @@ import {
 	SettingsManager
 } from "@earendil-works/pi-coding-agent"
 import {
+	cattyWorkspaceDir,
 	clearPostMigrationPrompts,
 	config,
 	memoryPath,
@@ -178,22 +180,36 @@ export async function startCatty(options?: { newSession?: boolean }) {
 	let client: Client
 	const discordTool = createDiscordTool(() => client)
 
-	const { session, modelFallbackMessage } = await createAgentSession({
-		cwd: workspace,
-		agentDir,
-		authStorage,
-		modelRegistry,
-		resourceLoader,
-		settingsManager,
-		customTools: [discordTool, memoryTool.definition],
-		sessionManager: options?.newSession
-			? SessionManager.create(workspace)
-			: SessionManager.continueRecent(workspace),
-		...(model ? { model } : {}),
-		...(config.pi?.thinking ? { thinkingLevel: config.pi.thinking } : {})
-	})
+	const channelSessions = config.pi?.channelSessions === true
+	const createPiSession = async (sessionDir?: string) => {
+		const { session, modelFallbackMessage } = await createAgentSession({
+			cwd: workspace,
+			agentDir,
+			authStorage,
+			modelRegistry,
+			resourceLoader,
+			settingsManager,
+			customTools: [discordTool, memoryTool.definition],
+			sessionManager: options?.newSession
+				? SessionManager.create(workspace, sessionDir)
+				: SessionManager.continueRecent(workspace, sessionDir),
+			...(model ? { model } : {}),
+			...(config.pi?.thinking
+				? { thinkingLevel: config.pi.thinking }
+				: {})
+		})
+		return { session, modelFallbackMessage }
+	}
+
+	const { session, modelFallbackMessage } = await createPiSession()
 	if (modelFallbackMessage) console.log(`[pi] ${modelFallbackMessage}`)
-	console.log(`[pi] session: ${session.sessionFile ?? session.sessionId}`)
+	console.log(
+		`[pi] main session: ${session.sessionFile ?? session.sessionId}`
+	)
+	if (channelSessions)
+		console.log(
+			"[pi] channelSessions enabled: Discord channels use separate pi sessions"
+		)
 
 	let heartbeatSession = session
 	if (
@@ -225,50 +241,84 @@ export async function startCatty(options?: { newSession?: boolean }) {
 		)
 	}
 
-	const piJobs: Array<{
-		run: () => Promise<void>
-		lowPriority: boolean
-		resolve: () => void
-		reject: (error: unknown) => void
-	}> = []
-	let piRunning = false
-	const runPiJobs = async () => {
-		if (piRunning) return
-		piRunning = true
-		try {
-			while (piJobs.length > 0) {
-				const normalIndex = piJobs.findIndex((job) => !job.lowPriority)
-				const [job] = piJobs.splice(
-					normalIndex === -1 ? 0 : normalIndex,
-					1
-				)
-				if (!job) continue
-				try {
-					await job.run()
-					job.resolve()
-				} catch (error) {
-					job.reject(error)
+	const createPiQueue = () => {
+		const piJobs: Array<{
+			run: () => Promise<void>
+			lowPriority: boolean
+			resolve: () => void
+			reject: (error: unknown) => void
+		}> = []
+		let piRunning = false
+		const runPiJobs = async () => {
+			if (piRunning) return
+			piRunning = true
+			try {
+				while (piJobs.length > 0) {
+					const normalIndex = piJobs.findIndex(
+						(job) => !job.lowPriority
+					)
+					const [job] = piJobs.splice(
+						normalIndex === -1 ? 0 : normalIndex,
+						1
+					)
+					if (!job) continue
+					try {
+						await job.run()
+						job.resolve()
+					} catch (error) {
+						job.reject(error)
+					}
 				}
+			} finally {
+				piRunning = false
 			}
-		} finally {
-			piRunning = false
 		}
-	}
-	const enqueuePi = (
-		run: () => Promise<void>,
-		options?: { lowPriority?: boolean }
-	) =>
-		new Promise<void>((resolve, reject) => {
-			const lowPriority = options?.lowPriority === true
-			piJobs.push({
-				run,
-				lowPriority,
-				resolve,
-				reject
+		return (
+			run: () => Promise<void>,
+			options?: { lowPriority?: boolean }
+		) =>
+			new Promise<void>((resolve, reject) => {
+				const lowPriority = options?.lowPriority === true
+				piJobs.push({
+					run,
+					lowPriority,
+					resolve,
+					reject
+				})
+				if (lowPriority) setTimeout(() => void runPiJobs(), 1500)
+				else void runPiJobs()
 			})
-			if (lowPriority) setTimeout(() => void runPiJobs(), 1500)
-			else void runPiJobs()
-		})
+	}
+	const enqueuePi = createPiQueue()
+	const channelPiRuntimes = new Map<
+		string,
+		Promise<{
+			session: AgentSession
+			enqueuePi: ReturnType<typeof createPiQueue>
+		}>
+	>()
+	const getChannelPiRuntime = (channelId: string) => {
+		if (!channelSessions) return Promise.resolve({ session, enqueuePi })
+		const existing = channelPiRuntimes.get(channelId)
+		if (existing) return existing
+		const created = (async () => {
+			const sessionDir = join(
+				cattyWorkspaceDir,
+				"channel-sessions",
+				channelId.replace(/[^a-zA-Z0-9_-]/g, "_")
+			)
+			const { session, modelFallbackMessage } =
+				await createPiSession(sessionDir)
+			if (modelFallbackMessage)
+				console.log(`[pi:${channelId}] ${modelFallbackMessage}`)
+			console.log(
+				`[pi:${channelId}] session: ${session.sessionFile ?? session.sessionId}`
+			)
+			return { session, enqueuePi: createPiQueue() }
+		})()
+		channelPiRuntimes.set(channelId, created)
+		return created
+	}
 
 	const allowedDiscordUser = async (
 		guildId: string | undefined,
@@ -526,10 +576,11 @@ ${content || "[no text content]"}
 			console.log("[pi] prompt queued for message", data.message.id)
 			console.log(`[pi] exact prompt:\n---\n${piPrompt}\n---`)
 
-			const job = enqueuePi(async () => {
+			const runtime = await getChannelPiRuntime(data.message.channelId)
+			const job = runtime.enqueuePi(async () => {
 				console.log("[pi] prompt started", data.message.id)
 				let text = ""
-				const unsubscribe = session.subscribe((event) => {
+				const unsubscribe = runtime.session.subscribe((event) => {
 					if (
 						event.type === "message_update" &&
 						event.assistantMessageEvent.type === "text_delta"
@@ -540,7 +591,7 @@ ${content || "[no text content]"}
 				})
 
 				try {
-					await session.prompt(
+					await runtime.session.prompt(
 						piPrompt,
 						images.length > 0 ? { images } : undefined
 					)
@@ -607,8 +658,7 @@ ${content || "[no text content]"}
 				new AssistantMessage(),
 				...createReactionListeners({
 					getClient: () => client,
-					session,
-					enqueuePi,
+					getPiRuntime: getChannelPiRuntime,
 					allowedDiscordUser
 				})
 			]
@@ -616,7 +666,8 @@ ${content || "[no text content]"}
 		[gateway]
 	)
 
-	const server = createServer(client, { port: 3000 })
+	const port = Number(config.port ?? 7990)
+	const server = createServer(client, { port })
 	let heartbeatQueue = Promise.resolve()
 
 	const heartbeatInterval = setInterval(
@@ -680,14 +731,16 @@ ${content || "[no text content]"}
 		(config.heartbeat?.intervalMinutes ?? 60) * 60 * 1000
 	)
 
-	console.log("Catty running at http://localhost")
+	console.log(`Catty running at http://localhost:${port}`)
 	console.log(`Workspace: ${workspace}`)
 	console.log(`Heartbeat: ${heartbeatPath}`)
 
 	for (const signal of ["SIGINT", "SIGTERM"] as const) {
-		process.on(signal, () => {
+		process.on(signal, async () => {
 			clearInterval(heartbeatInterval)
 			gateway.disconnect()
+			for (const runtime of channelPiRuntimes.values())
+				(await runtime).session.dispose()
 			if (heartbeatSession !== session) heartbeatSession.dispose()
 			session.dispose()
 			server.stop()

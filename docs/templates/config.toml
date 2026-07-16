@@ -10,12 +10,18 @@ token = "your-discord-bot-token"
 # Whether Catty sends all messages or just the responses
 verbose = false
 
+# Local HTTP server port. Use a unique port per named service running at the same time.
+# port = 7990
+
 # pi workspace/session/model settings.
 [pi]
 # Workspace directory Catty exposes to pi. Default: ~/.catty/workspace.
 # workspace = "~/.catty/workspace"
 # pi agent directory for auth.json, models.json, skills, extensions, etc. Default: pi's agent dir.
 # agentDir = "~/.pi/agent"
+# Run each Discord channel in its own pi session so channels can process simultaneously.
+# Default is false: all channels share one main session.
+# channelSessions = false
 # Optional pi provider/model override. Omit to use pi defaults.
 # provider = "openai-codex"
 # model = "gpt-5.5"
@@ -69,4 +75,4 @@ verbose = false
 # session = "separate"
 
 # DO NOT CHANGE THIS VALUE
-version = 2
+version = 3
