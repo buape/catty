@@ -4,7 +4,11 @@ import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 import {
 	type APIMessage,
+	ApplicationCommandOptionType,
 	Client,
+	Command,
+	type CommandInteraction,
+	type CommandOptions,
 	type ListenerEventData,
 	MessageCreateListener,
 	Routes
@@ -369,6 +373,125 @@ export async function startCatty(options?: { newSession?: boolean }) {
 		)
 	}
 
+	class CattyCommand extends Command {
+		name = "catty"
+		description = "Send a message to Catty"
+		options = [
+			{
+				name: "message",
+				description: "Message to send to Catty",
+				type: ApplicationCommandOptionType.String,
+				required: true
+			}
+		] satisfies CommandOptions
+
+		async run(interaction: CommandInteraction) {
+			await interaction.defer()
+
+			const content = interaction.options
+				.getString("message", true)
+				.trim()
+			const guildId = interaction.rawData.guild_id
+			const channelId = interaction.rawData.channel_id
+			const userId = interaction.userId
+			const user = interaction.user
+
+			console.log("[discord] /catty received", {
+				id: interaction.rawData.id,
+				channelId,
+				guildId,
+				authorId: userId,
+				author: user?.username,
+				content
+			})
+
+			if (!userId || !channelId) {
+				await interaction.reply(
+					"Catty could not identify this interaction. Check service logs."
+				)
+				return
+			}
+
+			const allowed = await allowedDiscordUser(
+				guildId,
+				channelId,
+				userId,
+				interaction.rawData.member?.roles ?? []
+			)
+			if (!allowed) {
+				console.log(
+					"[discord] ignored unauthorized /catty",
+					interaction.rawData.id
+				)
+				await interaction.reply(
+					"You are not authorized to use Catty here."
+				)
+				return
+			}
+
+			if (!content) {
+				await interaction.reply("Give Catty a message to send.")
+				return
+			}
+
+			const boundary = interaction.rawData.id
+			const piPrompt = `Discord interaction ${interaction.rawData.id} from ${user?.username ?? "unknown"} (${userId}) via /catty in ${channelId}${guildId ? ` guild ${guildId}` : ""}.
+
+<begin_untrusted_user_message_${boundary}>
+${content}
+<end_untrusted_user_message_${boundary}>`
+
+			console.log("[pi] prompt queued for /catty", interaction.rawData.id)
+			console.log(`[pi] exact prompt:\n---\n${piPrompt}\n---`)
+
+			const job = enqueuePi(async () => {
+				console.log("[pi] prompt started", interaction.rawData.id)
+				let text = ""
+				const unsubscribe = session.subscribe((event) => {
+					if (
+						event.type === "message_update" &&
+						event.assistantMessageEvent.type === "text_delta"
+					) {
+						text += event.assistantMessageEvent.delta
+						return
+					}
+				})
+
+				try {
+					await session.prompt(piPrompt)
+				} finally {
+					unsubscribe()
+				}
+
+				const response =
+					text.trim().slice(0, 1900) || "No text response."
+				console.log(
+					"[pi] final response for /catty",
+					interaction.rawData.id
+				)
+				console.log(`[pi] response:\n---\n${response}\n---`)
+				await interaction.reply(
+					response === "NO_REPLY"
+						? "Catty chose not to reply."
+						: response
+				)
+			})
+
+			await job.catch(async (error) => {
+				console.error(
+					"[pi] error for /catty",
+					interaction.rawData.id,
+					error
+				)
+				await interaction.reply(
+					"Catty hit an error. Check service logs."
+				)
+			})
+		}
+	}
+
+	const cattyCommand = new CattyCommand()
+
 	class AssistantMessage extends MessageCreateListener {
 		async handle(
 			data: ListenerEventData["MESSAGE_CREATE"],
@@ -640,13 +763,15 @@ ${content || "[no text content]"}
 			GatewayIntents.GuildMessages |
 			GatewayIntents.GuildMessageReactions |
 			GatewayIntents.DirectMessageReactions |
-			GatewayIntents.MessageContent
+			GatewayIntents.MessageContent,
+		autoInteractions: true
 	})
 
 	client = new Client(
 		{
 			baseUrl: "http://localhost",
 			token: config.token,
+			autoDeploy: true,
 			disableDeployRoute: true,
 			runtimeProfile: "persistent",
 			eventQueue: {
@@ -654,6 +779,7 @@ ${content || "[no text content]"}
 			}
 		},
 		{
+			commands: [cattyCommand],
 			listeners: [
 				new AssistantMessage(),
 				...createReactionListeners({
