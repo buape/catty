@@ -773,6 +773,7 @@ ${content || "[no text content]"}
 		intents:
 			GatewayIntents.Guilds |
 			GatewayIntents.GuildMessages |
+			GatewayIntents.DirectMessages |
 			GatewayIntents.GuildMessageReactions |
 			GatewayIntents.DirectMessageReactions |
 			GatewayIntents.MessageContent,
