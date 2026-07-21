@@ -324,6 +324,21 @@ export async function startCatty(options?: { newSession?: boolean }) {
 		return created
 	}
 
+	const getResponseMode = (
+		guildId: string | undefined,
+		channelId: string
+	) => {
+		const guild = guildId ? config.responses?.guilds?.[guildId] : undefined
+		const channel = guild?.channels?.[channelId]
+		return (
+			(typeof channel === "string" ? channel : channel?.mode) ??
+			config.responses?.channels?.[channelId] ??
+			guild?.default ??
+			config.responses?.default ??
+			"all"
+		)
+	}
+
 	const allowedDiscordUser = async (
 		guildId: string | undefined,
 		channelId: string,
@@ -528,10 +543,7 @@ ${content}
 				return
 			}
 
-			const mode =
-				config.responses?.channels?.[data.message.channelId] ??
-				config.responses?.default ??
-				"all"
+			const mode = getResponseMode(guildId, data.message.channelId)
 			const prefix = config.responses?.prefix ?? "!catty"
 			let content = data.content.trim()
 			const attachments = data.rawMessage.attachments ?? []

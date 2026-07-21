@@ -58,10 +58,18 @@ verbose = false
 # Prefix used when mode is prefix. Default: !catty.
 # prefix = "!catty"
 
-# Per-channel response mode overrides.
+# Global per-channel response mode overrides.
 # [responses.channels]
 # Channel IDs map to: all, mention-or-reply, or prefix.
 # channel-id = "mention-or-reply"
+
+# Guild-scoped response behavior.
+# [responses.guilds."guild-id"]
+# default = "mention-or-reply"
+
+# Channel-scoped response behavior inside a guild.
+# [responses.guilds."guild-id".channels."channel-id"]
+# mode = "mention-or-reply"
 
 # Hourly heartbeat behavior. Disabled unless heartbeat.enabled is explicitly set to true.
 [heartbeat]

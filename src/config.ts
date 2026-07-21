@@ -149,6 +149,13 @@ export const config = Bun.TOML.parse(configText) as {
 		default?: string
 		prefix?: string
 		channels?: Record<string, string>
+		guilds?: Record<
+			string,
+			{
+				default?: string
+				channels?: Record<string, string | { mode?: string }>
+			}
+		>
 	}
 	heartbeat?: {
 		enabled: boolean

@@ -68,6 +68,12 @@ verbose = false
 # [responses.channels]
 # channel-id = "mention-or-reply"
 
+# [responses.guilds."guild-id"]
+# default = "mention-or-reply"
+
+# [responses.guilds."guild-id".channels."channel-id"]
+# mode = "mention-or-reply"
+
 [heartbeat]
 # Required to turn heartbeat on. Default: false.
 # enabled = true
@@ -178,6 +184,14 @@ Empty `users` or `roles` arrays match nobody for that array. If both users and r
 - `all`: respond to every allowed message.
 - `mention-or-reply`: respond only if the bot is mentioned or the message replies to the bot.
 - `prefix`: respond only when the message starts with the configured prefix.
+
+Response mode precedence is:
+
+1. `responses.guilds.{guildId}.channels.{channelId}.mode`
+2. `responses.channels.{channelId}`
+3. `responses.guilds.{guildId}.default`
+4. `responses.default`
+5. `all`
 
 In `mention-or-reply` mode, direct mention pings include the previous 10 channel messages as untrusted context when the previous channel message was not from Catty.
 
