@@ -62,9 +62,11 @@ verbose = false
 # roles = ["channel-role-id"]
 
 [responses]
+# Default guild mode. DMs always use all.
 # default = "all"
 # prefix = "!catty"
 
+# Guild channel overrides.
 # [responses.channels]
 # channel-id = "mention-or-reply"
 
@@ -181,11 +183,13 @@ Empty `users` or `roles` arrays match nobody for that array. If both users and r
 
 ## Response modes
 
+Response modes apply to guild messages. DMs always use `all`.
+
 - `all`: respond to every allowed message.
 - `mention-or-reply`: respond only if the bot is mentioned or the message replies to the bot.
 - `prefix`: respond only when the message starts with the configured prefix.
 
-Response mode precedence is:
+Guild response mode precedence is:
 
 1. `responses.guilds.{guildId}.channels.{channelId}.mode`
 2. `responses.channels.{channelId}`

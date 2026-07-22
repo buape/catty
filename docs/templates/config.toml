@@ -52,14 +52,14 @@ verbose = false
 # users = ["channel-user-id"]
 # roles = ["channel-role-id"]
 
-# Response behavior.
+# Guild response behavior. DMs always use all.
 [responses]
-# Default mode: all, mention-or-reply, or prefix. Default: all.
+# Default guild mode: all, mention-or-reply, or prefix. Default: all.
 # default = "all"
 # Prefix used when mode is prefix. Default: !catty.
 # prefix = "!catty"
 
-# Global per-channel response mode overrides.
+# Global per-channel response mode overrides for guild channels.
 # [responses.channels]
 # Channel IDs map to: all, mention-or-reply, or prefix.
 # channel-id = "mention-or-reply"

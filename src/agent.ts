@@ -328,7 +328,9 @@ export async function startCatty(options?: { newSession?: boolean }) {
 		guildId: string | undefined,
 		channelId: string
 	) => {
-		const guild = guildId ? config.responses?.guilds?.[guildId] : undefined
+		if (!guildId) return "all"
+
+		const guild = config.responses?.guilds?.[guildId]
 		const channel = guild?.channels?.[channelId]
 		return (
 			(typeof channel === "string" ? channel : channel?.mode) ??
