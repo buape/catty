@@ -35,7 +35,7 @@ Usage:
   catty service uninstall       Uninstall the user service
   catty service start           Start the service
   catty service stop            Stop the service
-  catty service restart         Restart the service
+  catty service restart         Restart the service (--new forces a fresh pi session)
   catty service status          Show service status
   catty service logs [--follow]   Show service stdout logs
   catty service errors [--follow] Show service stderr/error logs
@@ -108,6 +108,9 @@ const systemdService = agentName
 	? `catty-${serviceName}.service`
 	: "catty.service"
 const devMode = Bun.argv.includes("--dev")
+const newSessionEnv = `CATTY_NEW_SESSION_${serviceLabel.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase()}`
+const wantsNewSession =
+	args.includes("--new") || process.env[newSessionEnv] === "1"
 const devRoot = join(homedir(), "Developer/catty")
 const logDir = join(homedir(), "Library/Logs/catty")
 const logPath = join(logDir, agentName ? `${serviceName}.log` : "catty.log")
@@ -218,13 +221,22 @@ const runService = async (action: string) => {
 			await run(["launchctl", "bootout", serviceTarget()])
 		if (action === "restart") {
 			await run(["launchctl", "bootout", serviceTarget()]).catch(() => {})
-			await run([
-				"launchctl",
-				"bootstrap",
-				`gui/${userInfo().uid}`,
-				serviceFile()
-			])
-			await run(["launchctl", "kickstart", "-k", serviceTarget()])
+			if (wantsNewSession)
+				await run(["launchctl", "setenv", newSessionEnv, "1"])
+			try {
+				await run([
+					"launchctl",
+					"bootstrap",
+					`gui/${userInfo().uid}`,
+					serviceFile()
+				])
+				await run(["launchctl", "kickstart", "-k", serviceTarget()])
+			} finally {
+				if (wantsNewSession)
+					await run(["launchctl", "unsetenv", newSessionEnv]).catch(
+						() => {}
+					)
+			}
 		}
 		if (action === "status")
 			await run(["launchctl", "print", serviceTarget()])
@@ -245,6 +257,25 @@ const runService = async (action: string) => {
 		]).catch(() => {})
 		if (existsSync(serviceFile())) await run(["rm", serviceFile()])
 		await run(["systemctl", "--user", "daemon-reload"])
+		return
+	}
+	if (action === "restart" && wantsNewSession) {
+		await run([
+			"systemctl",
+			"--user",
+			"set-environment",
+			`${newSessionEnv}=1`
+		])
+		try {
+			await run(["systemctl", "--user", action, systemdService])
+		} finally {
+			await run([
+				"systemctl",
+				"--user",
+				"unset-environment",
+				newSessionEnv
+			]).catch(() => {})
+		}
 		return
 	}
 	await run(["systemctl", "--user", action, systemdService])
@@ -282,7 +313,7 @@ const showLogs = async (follow: boolean, errors = false) => {
 }
 
 if (!command) {
-	await startCatty({ newSession: args.includes("--new") })
+	await startCatty({ newSession: wantsNewSession })
 } else if (command === "help") {
 	printHelp()
 } else if (command === "auth" && args[args.indexOf("auth") + 1] === "login") {
