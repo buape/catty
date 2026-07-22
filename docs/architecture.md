@@ -19,7 +19,7 @@ Catty is the project/harness. The running assistant is an agent inside Catty; du
 11. Carbon receives Discord `MESSAGE_CREATE` events through `GatewayPlugin`.
 12. Listener logs the received Discord message.
 13. Listener ignores bot messages.
-14. Listener checks DM users or nested guild/channel user-role whitelists.
+14. Listener checks the global user allowlist or nested guild/channel user-role overrides.
 15. Listener checks the channel response mode.
 16. Accepted message text and reply context are wrapped in untrusted begin/end blocks and sent to pi.
 17. Pi can use the `memory` tool to search/retrieve/update `MEMORY.qmd` through QMD.

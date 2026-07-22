@@ -51,7 +51,7 @@ verbose = false
 # ollama-cloud = "optional-ollama-cloud-key-if-your-models-json-provider-uses-this-name"
 
 [auth]
-# users = ["dm-user-id"]
+# users = ["user-id"]
 
 # [auth.guilds."guild-id"]
 # users = ["guild-user-id"]
@@ -157,18 +157,18 @@ For launchd/systemd, run `catty auth login` as the same OS user that runs Catty.
 
 ## Auth
 
-`auth.users` is for DMs only.
+`auth.users` is the global user allowlist. It applies to DMs and to guilds that do not have a more specific `auth.guilds.{guildId}` override.
 
-Guild auth is nested by guild ID. Users and roles can be allowed at the guild level or narrowed inside a guild channel.
+Guild auth is nested by guild ID. Users and roles can be allowed at the guild level or narrowed inside a guild channel. A configured guild overrides the global `auth.users` default for that guild.
 
 Semantics:
 
-- `auth.users` omitted: anyone may DM the agent.
-- `auth.users = []`: nobody may DM the agent.
-- `auth.users = ["id"]`: only listed users may DM the agent.
-- `auth.guilds` omitted: guild messages are unrestricted by guild/channel/user/role auth.
-- `auth.guilds` present but empty: no guild messages are allowed.
-- `auth.guilds.{guildId}` present: that guild is allowed; missing guild IDs are denied.
+- `auth.users` omitted: anyone may use the agent by default.
+- `auth.users = []`: nobody may use the agent by default.
+- `auth.users = ["id"]`: only listed users may use the agent by default.
+- `auth.guilds` omitted or empty: guild messages follow `auth.users`.
+- `auth.guilds.{guildId}` present: that guild uses its specific guild/channel rules instead of `auth.users`.
+- missing guild IDs: guild messages follow `auth.users`.
 - guild `users`/`roles` omitted: anyone in that guild passes the guild principal check.
 - guild `users`/`roles` present: matching a listed user or listed role passes the guild principal check.
 - guild `channels` omitted: any channel in that guild is allowed.

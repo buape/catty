@@ -355,12 +355,12 @@ export async function startCatty(options?: { newSession?: boolean }) {
 			} catch {}
 		}
 
-		if (!guildId) {
-			return auth.users === undefined ? true : auth.users.includes(userId)
-		}
-		if (auth.guilds === undefined) return true
+		const globalUserAllowed =
+			auth.users === undefined ? true : auth.users.includes(userId)
+		if (!guildId) return globalUserAllowed
 
-		const guild = auth.guilds[guildId]
+		const guild = auth.guilds?.[guildId]
+		if (!guild) return globalUserAllowed
 		const channel =
 			guild?.channels === undefined
 				? undefined
@@ -383,9 +383,7 @@ export async function startCatty(options?: { newSession?: boolean }) {
 					) ??
 						false)
 			: guild?.channels === undefined
-		return (
-			Boolean(guild) && guildPrincipalAllowed && channelPrincipalAllowed
-		)
+		return guildPrincipalAllowed && channelPrincipalAllowed
 	}
 
 	class CattyCommand extends Command {

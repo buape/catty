@@ -34,12 +34,13 @@ verbose = false
 # openai = "optional-openai-api-key"
 # ollama-cloud = "optional-ollama-cloud-key-if-your-models-json-provider-uses-this-name"
 
-# DM authorization.
+# Authorization.
 [auth]
-# DM allowlist. Omit auth.users to allow anyone in DMs. Empty array allows nobody in DMs.
-# users = ["dm-user-id"]
+# Global user allowlist for DMs and guilds without a specific guild override.
+# Omit auth.users to allow anyone by default. Empty array allows nobody by default.
+# users = ["user-id"]
 
-# Guild authorization for a specific guild.
+# Guild authorization override for a specific guild.
 # [auth.guilds."guild-id"]
 # Guild-level user/role allowlists. Omit both to allow anyone in this guild.
 # users = ["guild-user-id"]

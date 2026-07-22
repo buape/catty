@@ -10,8 +10,8 @@ KISS above everything else.
 - One assistant, one main pi session for Discord runtime. Never create per-channel, per-user, or per-guild pi sessions. Post-migration maintenance may run in a separate in-memory side session before the main session starts.
 - Runtime config lives in one config file. Secrets can live there too.
 - Auth rules:
-  - top-level `auth.users` is for DMs only
-  - guild auth lives under `auth.guilds[guildId]`
+  - top-level `auth.users` is the global user allowlist for DMs and guilds without a specific override
+  - guild auth overrides live under `auth.guilds[guildId]`
   - guild/channel scopes can contain `users` and `roles`
   - missing whitelist = anyone passes that scope
   - empty whitelist = nobody passes that array
