@@ -68,6 +68,7 @@ This uses `~/.catty/work/config.toml`, `~/.catty/work/workspace`, and separate s
 ```bash
 catty --name work service install
 catty --name work service logs --follow
+catty --name work service errors --follow
 ```
 
 Custom config path:

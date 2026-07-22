@@ -37,8 +37,9 @@ Usage:
   catty service stop            Stop the service
   catty service restart         Restart the service
   catty service status          Show service status
-  catty service logs [--follow] Show service logs
-  catty help                    Show this help
+  catty service logs [--follow]   Show service stdout logs
+  catty service errors [--follow] Show service stderr/error logs
+  catty help                      Show this help
 
 Options:
   --config PATH                 Use a custom config path
@@ -249,19 +250,34 @@ const runService = async (action: string) => {
 	await run(["systemctl", "--user", action, systemdService])
 }
 
-const showLogs = async (follow: boolean) => {
+const showLogs = async (follow: boolean, errors = false) => {
 	if (platform() === "darwin") {
 		await run(
 			follow
-				? ["tail", "-f", logPath, errorLogPath]
-				: ["tail", "-n", "200", logPath, errorLogPath]
+				? ["tail", "-f", errors ? errorLogPath : logPath]
+				: ["tail", "-n", "200", errors ? errorLogPath : logPath]
 		)
 		return
 	}
 	await run(
 		follow
-			? ["journalctl", "--user", "-u", systemdService, "-f"]
-			: ["journalctl", "--user", "-u", systemdService, "-n", "200"]
+			? [
+					"journalctl",
+					"--user",
+					"-u",
+					systemdService,
+					...(errors ? ["-p", "err"] : []),
+					"-f"
+				]
+			: [
+					"journalctl",
+					"--user",
+					"-u",
+					systemdService,
+					...(errors ? ["-p", "err"] : []),
+					"-n",
+					"200"
+				]
 	)
 }
 
@@ -306,6 +322,8 @@ if (!command) {
 	if (action === "install") await installService()
 	else if (action === "logs")
 		await showLogs(args.includes("--follow") || args.includes("-f"))
+	else if (action === "errors")
+		await showLogs(args.includes("--follow") || args.includes("-f"), true)
 	else if (
 		["start", "stop", "restart", "status", "uninstall"].includes(action)
 	)
