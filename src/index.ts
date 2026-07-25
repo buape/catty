@@ -1,7 +1,13 @@
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs"
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	writeFileSync
+} from "node:fs"
 import { homedir, platform, userInfo } from "node:os"
-import { dirname, join } from "node:path"
-import { AuthStorage, getAgentDir } from "@earendil-works/pi-coding-agent"
+import { dirname, join, resolve } from "node:path"
+import { getAgentDir, ModelRuntime } from "@earendil-works/pi-coding-agent"
 
 const run = async (command: string[]) => {
 	console.log(`$ ${command.join(" ")}`)
@@ -31,6 +37,8 @@ const printHelp = () => {
 Usage:
   catty [--new] [--name NAME] [--config PATH] Start Catty in the foreground
   catty auth login [provider]   Login to pi auth provider
+  catty preview [agent] [channel-id]
+                              Resume the main or channel pi session in the pi TUI
   catty service install         Install the user service
   catty service uninstall       Uninstall the user service
   catty service start           Start the service
@@ -77,8 +85,87 @@ const hasRootAgent =
 const usingDefaultConfig = !args.includes("--config")
 const usingNamedAgent = args.includes("--name")
 
+const previewArgs = () => {
+	const index = args.indexOf("preview")
+	const values: string[] = []
+	for (let i = index + 1; i > 0 && i < args.length; i++) {
+		const arg = args[i]
+		if (arg === "--name" || arg === "--config") i++
+		else if (arg && !arg.startsWith("--")) values.push(arg)
+	}
+	return values
+}
+
+const configValue = (name: string) => {
+	const index = args.indexOf(name)
+	return index === -1 ? undefined : args[index + 1]
+}
+
+const resolveHome = (path: string) => path.replace(/^~(?=$|\/)/, homedir())
+
+const runPreview = async () => {
+	const values = previewArgs()
+	const flagAgent = configValue("--name")
+	let previewAgent = flagAgent
+	let channelId: string | undefined
+	if (flagAgent) channelId = values[0]
+	else if (values.length >= 2) {
+		previewAgent = values[0]
+		channelId = values[1]
+	} else if (values[0] && namedAgents.includes(values[0])) {
+		previewAgent = values[0]
+	} else channelId = values[0]
+
+	if (!previewAgent && !hasRootAgent && namedAgents.length === 1)
+		previewAgent = namedAgents[0]
+	if (!previewAgent && !hasRootAgent && namedAgents.length > 1)
+		throw new Error(
+			`Choose an agent: ${namedAgents.map((name) => `catty preview ${name}`).join(", ")}`
+		)
+
+	const agentRoot = previewAgent ? join(cattyDir, previewAgent) : cattyDir
+	const path = configValue("--config") ?? join(agentRoot, "config.toml")
+	let workspace = join(agentRoot, "workspace")
+	let piAgentDir: string | undefined
+	if (existsSync(path)) {
+		const parsed = Bun.TOML.parse(readFileSync(path, "utf8")) as {
+			pi?: { workspace?: string; agentDir?: string }
+		}
+		if (parsed.pi?.workspace)
+			workspace = resolve(resolveHome(parsed.pi.workspace))
+		if (parsed.pi?.agentDir)
+			piAgentDir = resolve(resolveHome(parsed.pi.agentDir))
+	}
+
+	const command = ["pi", "--resume"]
+	if (channelId) {
+		const safeChannelId = channelId.replace(/[^a-zA-Z0-9_-]/g, "_")
+		command.push(
+			"--session-dir",
+			join(workspace, ".internal/channel-sessions", safeChannelId)
+		)
+	}
+	console.log(`$ ${command.join(" ")}`)
+	const process = Bun.spawn(command, {
+		cwd: workspace,
+		stdout: "inherit",
+		stderr: "inherit",
+		stdin: "inherit",
+		env: piAgentDir
+			? { ...Bun.env, PI_CODING_AGENT_DIR: piAgentDir }
+			: Bun.env
+	})
+	const code = await process.exited
+	if (code !== 0) throw new Error(`pi exited with ${code}`)
+}
+
 if (wantsHelp) {
 	printHelp()
+	process.exit(0)
+}
+
+if (command === "preview") {
+	await runPreview()
 	process.exit(0)
 }
 
@@ -323,29 +410,39 @@ if (!command) {
 			`Only openai-codex OAuth is wired right now: ${provider}`
 		)
 
-	const authStorage = AuthStorage.create(join(agentDir, "auth.json"))
+	const modelRuntime = await ModelRuntime.create({
+		authPath: join(agentDir, "auth.json"),
+		modelsPath: join(agentDir, "models.json")
+	})
 	for (const [provider, key] of Object.entries(config.pi?.apiKeys ?? {})) {
-		if (typeof key === "string") authStorage.setRuntimeApiKey(provider, key)
+		if (typeof key === "string")
+			await modelRuntime.setRuntimeApiKey(provider, key)
 	}
 
-	await authStorage.login(provider, {
-		onSelect: async () => "device_code",
-		onDeviceCode: (info) => {
-			console.log(`Open ${info.verificationUri}`)
-			console.log(`Enter code: ${info.userCode}`)
-			console.log("Waiting for login to finish...")
-		},
-		onAuth: (info) => {
-			console.log(info.instructions ?? "Open this URL to continue:")
-			console.log(info.url)
-		},
-		onPrompt: async (prompt) => {
+	await modelRuntime.login(provider, "oauth", {
+		prompt: async (prompt) => {
+			if (prompt.type === "select")
+				return (
+					prompt.options.find((option) => option.id === "device_code")
+						?.id ??
+					prompt.options[0]?.id ??
+					""
+				)
 			console.log(prompt.message)
 			for await (const chunk of Bun.stdin.stream())
 				return new TextDecoder().decode(chunk).trim()
 			return ""
 		},
-		onProgress: (message) => console.log(message)
+		notify: (event) => {
+			if (event.type === "device_code") {
+				console.log(`Open ${event.verificationUri}`)
+				console.log(`Enter code: ${event.userCode}`)
+				console.log("Waiting for login to finish...")
+			} else if (event.type === "auth_url") {
+				console.log(event.instructions ?? "Open this URL to continue:")
+				console.log(event.url)
+			} else console.log(event.message)
+		}
 	})
 	console.log(`Logged in: ${provider}`)
 } else if (command === "service") {

@@ -17,11 +17,11 @@ import { createServer } from "@buape/carbon/adapters/bun"
 import { GatewayIntents, GatewayPlugin } from "@buape/carbon/gateway"
 import {
 	type AgentSession,
-	AuthStorage,
 	createAgentSession,
 	DefaultResourceLoader,
 	getAgentDir,
 	ModelRegistry,
+	ModelRuntime,
 	SessionManager,
 	SettingsManager
 } from "@earendil-works/pi-coding-agent"
@@ -52,16 +52,17 @@ export async function startCatty(options?: { newSession?: boolean }) {
 		`[catty] system prompt sent to pi:\n---\n${cattySystemPrompt}\n---`
 	)
 
-	const authStorage = AuthStorage.create(join(agentDir, "auth.json"))
+	const modelRuntime = await ModelRuntime.create({
+		authPath: join(agentDir, "auth.json"),
+		modelsPath: join(agentDir, "models.json")
+	})
 
 	for (const [provider, key] of Object.entries(config.pi?.apiKeys ?? {})) {
-		if (typeof key === "string") authStorage.setRuntimeApiKey(provider, key)
+		if (typeof key === "string")
+			await modelRuntime.setRuntimeApiKey(provider, key)
 	}
 
-	const modelRegistry = ModelRegistry.create(
-		authStorage,
-		join(agentDir, "models.json")
-	)
+	const modelRegistry = new ModelRegistry(modelRuntime)
 	const model =
 		config.pi?.provider && config.pi?.model
 			? modelRegistry.find(config.pi.provider, config.pi.model)
@@ -105,8 +106,7 @@ export async function startCatty(options?: { newSession?: boolean }) {
 			await createAgentSession({
 				cwd: workspace,
 				agentDir,
-				authStorage,
-				modelRegistry,
+				modelRuntime,
 				resourceLoader,
 				settingsManager,
 				customTools: [memoryTool.definition],
@@ -189,8 +189,7 @@ export async function startCatty(options?: { newSession?: boolean }) {
 		const { session, modelFallbackMessage } = await createAgentSession({
 			cwd: workspace,
 			agentDir,
-			authStorage,
-			modelRegistry,
+			modelRuntime,
 			resourceLoader,
 			settingsManager,
 			customTools: [discordTool, memoryTool.definition],
@@ -226,8 +225,7 @@ export async function startCatty(options?: { newSession?: boolean }) {
 		} = await createAgentSession({
 			cwd: workspace,
 			agentDir,
-			authStorage,
-			modelRegistry,
+			modelRuntime,
 			resourceLoader,
 			settingsManager,
 			customTools: [discordTool, memoryTool.definition],
@@ -401,8 +399,6 @@ export async function startCatty(options?: { newSession?: boolean }) {
 		] satisfies CommandOptions
 
 		async run(interaction: CommandInteraction) {
-			await interaction.defer()
-
 			const content = interaction.options
 				.getString("message", true)
 				.trim()
@@ -438,9 +434,10 @@ export async function startCatty(options?: { newSession?: boolean }) {
 					"[discord] ignored unauthorized /catty",
 					interaction.rawData.id
 				)
-				await interaction.reply(
-					"You are not authorized to use Catty here."
-				)
+				await interaction.reply({
+					content: "You don't have permission to do that",
+					ephemeral: true
+				})
 				return
 			}
 
@@ -448,6 +445,8 @@ export async function startCatty(options?: { newSession?: boolean }) {
 				await interaction.reply("Give Catty a message to send.")
 				return
 			}
+
+			await interaction.defer()
 
 			const boundary = interaction.rawData.id
 			const piPrompt = `Discord interaction ${interaction.rawData.id} from ${user?.username ?? "unknown"} (${userId}) via /catty in ${channelId}${guildId ? ` guild ${guildId}` : ""}.
