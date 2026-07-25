@@ -19,7 +19,7 @@
 		"release": "bun run release:darwin-arm64 && bun run release:darwin-x64 && bun run release:linux-x64"
 	},
 	"dependencies": {
-		"@buape/carbon": "^0.16.0",
+		"@buape/carbon": "^0.0.0-beta-20260722183643",
 		"@earendil-works/pi-coding-agent": "^0.82.1",
 		"@tobilu/qmd": "^2.5.3"
 	},
