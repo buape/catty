@@ -96,6 +96,40 @@ export async function startCatty(options?: { newSession?: boolean }) {
 
 	const memoryTool = createMemoryTool(workspace, memoryPath)
 	await memoryTool.predownload()
+	const assistantText = (message: unknown) =>
+		message &&
+		typeof message === "object" &&
+		"role" in message &&
+		message.role === "assistant" &&
+		"content" in message &&
+		Array.isArray(message.content)
+			? message.content
+					.filter(
+						(block) =>
+							block &&
+							typeof block === "object" &&
+							"type" in block &&
+							block.type === "text" &&
+							"text" in block &&
+							typeof block.text === "string"
+					)
+					.map((block) => block.text)
+					.join("")
+			: ""
+	const finalAssistantText = (messages: unknown[]) =>
+		assistantText(
+			messages
+				.filter(
+					(message) =>
+						message &&
+						typeof message === "object" &&
+						"role" in message &&
+						message.role === "assistant" &&
+						(!("stopReason" in message) ||
+							message.stopReason !== "toolUse")
+				)
+				.at(-1)
+		)
 	const runPostMigrationPrompts = async () => {
 		const prompts = readPostMigrationPrompts()
 		if (prompts.length === 0) return
@@ -121,9 +155,11 @@ export async function startCatty(options?: { newSession?: boolean }) {
 		let text = ""
 		let thinking = ""
 		const unsubscribe = migrationSession.subscribe((event) => {
+			if (event.type === "agent_end") {
+				text = finalAssistantText(event.messages)
+				return
+			}
 			if (event.type === "message_update") {
-				if (event.assistantMessageEvent.type === "text_delta")
-					text += event.assistantMessageEvent.delta
 				if (event.assistantMessageEvent.type === "thinking_delta")
 					thinking += event.assistantMessageEvent.delta
 				return
@@ -462,13 +498,8 @@ ${content}
 				console.log("[pi] prompt started", interaction.rawData.id)
 				let text = ""
 				const unsubscribe = session.subscribe((event) => {
-					if (
-						event.type === "message_update" &&
-						event.assistantMessageEvent.type === "text_delta"
-					) {
-						text += event.assistantMessageEvent.delta
-						return
-					}
+					if (event.type === "agent_end")
+						text = finalAssistantText(event.messages)
 				})
 
 				try {
@@ -715,13 +746,8 @@ ${content || "[no text content]"}
 				console.log("[pi] prompt started", data.message.id)
 				let text = ""
 				const unsubscribe = runtime.session.subscribe((event) => {
-					if (
-						event.type === "message_update" &&
-						event.assistantMessageEvent.type === "text_delta"
-					) {
-						text += event.assistantMessageEvent.delta
-						return
-					}
+					if (event.type === "agent_end")
+						text = finalAssistantText(event.messages)
 				})
 
 				try {
@@ -830,11 +856,8 @@ ${content || "[no text content]"}
 				console.log("[heartbeat] prompt started")
 				let text = ""
 				const unsubscribe = heartbeatSession.subscribe((event) => {
-					if (
-						event.type === "message_update" &&
-						event.assistantMessageEvent.type === "text_delta"
-					) {
-						text += event.assistantMessageEvent.delta
+					if (event.type === "agent_end") {
+						text = finalAssistantText(event.messages)
 						return
 					}
 					try {
