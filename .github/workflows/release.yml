@@ -48,7 +48,7 @@ jobs:
           tar -C "release/catty-${VERSION}-linux-amd64" -czf "catty-${VERSION}-linux-amd64.tar.gz" catty
 
       - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: catty-*.tar.gz
           generate_release_notes: true
