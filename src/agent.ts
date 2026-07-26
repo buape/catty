@@ -509,16 +509,25 @@ ${content}
 				}
 
 				const response =
-					text.trim().slice(0, 1900) || "No text response."
+					text.trim() || "No text response."
 				console.log(
 					"[pi] final response for /catty",
 					interaction.rawData.id
 				)
-				console.log(`[pi] response:\n---\n${response}\n---`)
+				console.log(`[pi] response:\n---\n${response.slice(0, 500)}\n---`)
+
+				// Extract image markers: [IMAGE: /path/to/file.png]
+				const imageMarkerRegex = /\[IMAGE:\s*([^\]]+)\]/g
+				const imagePaths: string[] = []
+				const cleanText = response.replace(imageMarkerRegex, (_, p1) => {
+					imagePaths.push(p1.trim())
+					return ""
+				}).trim().slice(0, 1900) || "No text response."
+
 				await interaction.reply(
 					response === "NO_REPLY"
 						? "Catty chose not to reply."
-						: response
+						: cleanText
 				)
 			})
 
@@ -766,9 +775,9 @@ ${content || "[no text content]"}
 				}
 
 				const response =
-					text.trim().slice(0, 1900) || "No text response."
+					text.trim() || "No text response."
 				console.log("[pi] final response for message", data.message.id)
-				console.log(`[pi] response:\n---\n${response}\n---`)
+				console.log(`[pi] response:\n---\n${response.slice(0, 500)}\n---`)
 				if (response === "NO_REPLY") {
 					console.log(
 						"[discord] suppressed NO_REPLY",
@@ -776,11 +785,33 @@ ${content || "[no text content]"}
 					)
 					return
 				}
+
+				// Extract image markers: [IMAGE: /path/to/file.png]
+				const imageMarkerRegex = /\[IMAGE:\s*([^\]]+)\]/g
+				const imagePaths: string[] = []
+				const cleanText = response.replace(imageMarkerRegex, (_, p1) => {
+					imagePaths.push(p1.trim())
+					return ""
+				}).trim().slice(0, 1900) || "No text response."
+
+				const files: { name: string; data: Blob }[] = []
+				for (const imgPath of imagePaths) {
+					try {
+						const { readFile } = await import("node:fs/promises")
+						const fileBuffer = await readFile(imgPath.trim())
+						const filename = imgPath.split("/").pop() || "image.png"
+					files.push({ name: filename, data: new Blob([fileBuffer]) })
+					} catch (error) {
+						console.error("[discord] failed to read image", imgPath, error)
+					}
+				}
+
 				const channel = await data.message.fetchChannel()
+				const payload = files.length > 0 ? { content: cleanText, files } : cleanText
 				if (!channel?.isSendable()) {
-					data.message.reply(response)
+					data.message.reply(payload)
 				} else {
-					channel.send(response)
+					channel.send(payload)
 				}
 			})
 
