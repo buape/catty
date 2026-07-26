@@ -274,17 +274,18 @@ const discordSchema = Type.Union([
 			}),
 			query: Type.Optional(
 				Type.String({
-				description: "Text content of the message to send."
+					description: "Text content of the message to send."
 				})
 			),
 			name: Type.Optional(
 				Type.String({
-				description: "Filename for the attachment (e.g. image.png)."
+					description: "Filename for the attachment (e.g. image.png)."
 				})
 			),
 			id: Type.Optional(
 				Type.String({
-				description: "Path to a local file to attach to the message."
+					description:
+						"Path to a local file to attach to the message."
 				})
 			)
 		})
@@ -801,7 +802,9 @@ class SendMessageAction extends DiscordAction {
 		const filename = this.params.name ?? "attachment"
 
 		if (!content && !filePath) {
-			throw new Error("Either text content (query) or a file path (id) is required")
+			throw new Error(
+				"Either text content (query) or a file path (id) is required"
+			)
 		}
 
 		const payload: Record<string, unknown> = {}
