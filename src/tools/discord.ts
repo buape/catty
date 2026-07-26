@@ -264,6 +264,30 @@ const discordSchema = Type.Union([
 			guildId: Type.String(),
 			memberId: Type.String()
 		})
+	]),
+	Type.Intersect([
+		commonSchema,
+		Type.Object({
+			action: Type.Literal("send_message"),
+			channelId: Type.String({
+				description: "Channel ID to send the message to."
+			}),
+			query: Type.Optional(
+				Type.String({
+				description: "Text content of the message to send."
+				})
+			),
+			name: Type.Optional(
+				Type.String({
+				description: "Filename for the attachment (e.g. image.png)."
+				})
+			),
+			id: Type.Optional(
+				Type.String({
+				description: "Path to a local file to attach to the message."
+				})
+			)
+		})
 	])
 ])
 
@@ -762,14 +786,50 @@ const createAction = (client: Client, params: DiscordParams) => {
 		return new TimeoutMemberAction(client, params)
 	if (params.action === "kick_member")
 		return new KickMemberAction(client, params)
+	if (params.action === "ban_member")
+		return new BanMemberAction(client, params)
+	if (params.action === "send_message")
+		return new SendMessageAction(client, params)
 	return new BanMemberAction(client, params)
+}
+
+class SendMessageAction extends DiscordAction {
+	async execute() {
+		const channelId = this.required(this.params.channelId, "channelId")
+		const content = this.params.query ?? ""
+		const filePath = this.params.id
+		const filename = this.params.name ?? "attachment"
+
+		if (!content && !filePath) {
+			throw new Error("Either text content (query) or a file path (id) is required")
+		}
+
+		const payload: Record<string, unknown> = {}
+		if (content) payload.content = content
+
+		if (filePath) {
+			const fileBuffer = await import("node:fs/promises").then((fs) =>
+				fs.readFile(filePath)
+			)
+			payload.files = [
+				{
+					name: filename,
+					data: new Blob([fileBuffer])
+				}
+			]
+		}
+
+		return this.client.rest.post(Routes.channelMessages(channelId), {
+			body: payload
+		})
+	}
 }
 
 class DiscordTool extends Tool<typeof discordSchema> {
 	name = "discord"
 	label = "Discord"
 	description =
-		"Fetch Discord info, search messages, react/pin messages, create/edit roles/channels, edit channel permissions, manage member roles/nicknames, and timeout/kick/ban members."
+		"Fetch Discord info, search messages, react/pin messages, create/edit roles/channels, edit channel permissions, manage member roles/nicknames, and timeout/kick/ban members, and send messages with file attachments."
 	parameters = discordSchema
 
 	constructor(private getClient: () => Client) {
