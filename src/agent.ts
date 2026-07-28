@@ -551,6 +551,66 @@ ${content}
 
 	const cattyCommand = new CattyCommand()
 
+	class StopCommand extends Command {
+		name = "stop"
+		description = "Cancel the current Catty turn in this channel"
+
+		async run(interaction: CommandInteraction) {
+			const guildId = interaction.rawData.guild_id
+			const channelId = interaction.rawData.channel_id
+			const userId = interaction.userId
+
+			console.log("[discord] /stop received", {
+				id: interaction.rawData.id,
+				channelId,
+				guildId,
+				authorId: userId
+			})
+
+			if (!userId || !channelId) {
+				await interaction.reply({
+					content: "Could not identify this interaction.",
+					ephemeral: true
+				})
+				return
+			}
+
+			const allowed = await allowedDiscordUser(
+				guildId,
+				channelId,
+				userId,
+				interaction.rawData.member?.roles ?? []
+			)
+			if (!allowed) {
+				console.log(
+					"[discord] ignored unauthorized /stop",
+					interaction.rawData.id
+				)
+				await interaction.reply({
+					content: "You don't have permission to do that",
+					ephemeral: true
+				})
+				return
+			}
+
+			const runtime = await getChannelPiRuntime(channelId)
+			try {
+				await runtime.session.abort()
+				console.log("[discord] /stop aborted session for", channelId)
+				await interaction.reply("Stopped.")
+			} catch (error) {
+				console.error("[discord] /stop error", error)
+				await interaction.reply({
+					content:
+						"Failed to stop the current turn. Check service logs.",
+					ephemeral: true
+				})
+			}
+		}
+	}
+
+	const stopCommand = new StopCommand()
+
 	class AssistantMessage extends MessageCreateListener {
 		async handle(
 			data: ListenerEventData["MESSAGE_CREATE"],
@@ -866,7 +926,7 @@ ${content || "[no text content]"}
 			}
 		},
 		{
-			commands: [cattyCommand],
+			commands: [cattyCommand, stopCommand],
 			listeners: [
 				new AssistantMessage(),
 				...createReactionListeners({
