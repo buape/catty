@@ -10,3 +10,4 @@ logs
 /catty.config.toml
 /config.toml
 .pi/goals
+.pi/.goals-pool-snapshot.json
