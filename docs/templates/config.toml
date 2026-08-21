@@ -83,5 +83,21 @@ verbose = false
 # Session mode: separate or main. Default: separate.
 # session = "separate"
 
+# Browser voice UI. Disabled by default.
+[web]
+# Serve Catty's voice-first web UI at GET /. Discord keeps using /interactions and /events.
+# enabled = true
+# Host used when enabled. 0.0.0.0 allows LAN/Tailscale clients.
+# host = "0.0.0.0"
+# wakeWord = "hey catty"
+# defaultMode = "Push"
+
+[web.voice]
+# OpenAI v1 reuses [pi.apiKeys].openai or pi's stored OpenAI auth.
+# provider = "openai"
+# transcribeModel = "gpt-4o-mini-transcribe"
+# speechModel = "gpt-4o-mini-tts"
+# voice = "alloy"
+
 # DO NOT CHANGE THIS VALUE
-version = 3
+version = 4

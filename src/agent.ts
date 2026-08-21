@@ -13,7 +13,7 @@ import {
 	MessageCreateListener,
 	Routes
 } from "@buape/carbon"
-import { createServer } from "@buape/carbon/adapters/bun"
+import { createHandler } from "@buape/carbon/adapters/fetch"
 import { GatewayIntents, GatewayPlugin } from "@buape/carbon/gateway"
 import {
 	type AgentSession,
@@ -37,6 +37,7 @@ import { createReactionListeners } from "./listeners/reactions"
 import { cattySystemPrompt } from "./prompt"
 import { createDiscordTool } from "./tools/discord"
 import { createMemoryTool } from "./tools/memory"
+import { createCattyWeb } from "./web"
 
 export async function startCatty(options?: { newSession?: boolean }) {
 	const agentDir = String(config.pi?.agentDir ?? getAgentDir()).replace(
@@ -356,6 +357,27 @@ export async function startCatty(options?: { newSession?: boolean }) {
 		})()
 		channelPiRuntimes.set(channelId, created)
 		return created
+	}
+	let voicePiRuntime:
+		| Promise<{
+				session: AgentSession
+				enqueuePi: ReturnType<typeof createPiQueue>
+		  }>
+		| undefined
+	const getVoicePiRuntime = () => {
+		if (!channelSessions) return Promise.resolve({ session, enqueuePi })
+		voicePiRuntime ??= (async () => {
+			const { session, modelFallbackMessage } = await createPiSession(
+				join(cattyWorkspaceDir, "voice-session")
+			)
+			if (modelFallbackMessage)
+				console.log(`[pi:voice] ${modelFallbackMessage}`)
+			console.log(
+				`[pi:voice] session: ${session.sessionFile ?? session.sessionId}`
+			)
+			return { session, enqueuePi: createPiQueue() }
+		})()
+		return voicePiRuntime
 	}
 
 	const getResponseMode = (
@@ -940,7 +962,21 @@ ${content || "[no text content]"}
 	)
 
 	const port = Number(config.port ?? 7990)
-	const server = createServer(client, { port })
+	const web =
+		config.web?.enabled === true
+			? createCattyWeb({
+					config: config.web,
+					modelRuntime,
+					getRuntime: getVoicePiRuntime
+				})
+			: undefined
+	const carbonHandler = createHandler(client)
+	const server = Bun.serve({
+		port,
+		...(web ? { hostname: config.web?.host ?? "0.0.0.0" } : {}),
+		fetch: async (request) =>
+			(await web?.handleRequest(request)) ?? carbonHandler(request, {})
+	})
 	let heartbeatQueue = Promise.resolve()
 
 	const heartbeatInterval = setInterval(
@@ -1011,8 +1047,10 @@ ${content || "[no text content]"}
 			gateway.disconnect()
 			for (const runtime of channelPiRuntimes.values())
 				(await runtime).session.dispose()
+			if (voicePiRuntime) (await voicePiRuntime).session.dispose()
 			if (heartbeatSession !== session) heartbeatSession.dispose()
 			session.dispose()
+			web?.dispose()
 			server.stop()
 			process.exit(0)
 		})

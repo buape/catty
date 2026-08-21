@@ -12,7 +12,7 @@ import { homedir } from "node:os"
 import { dirname, extname, join, relative, resolve } from "node:path"
 import templateConfig from "../docs/templates/config.toml" with { type: "text" }
 
-const configVersion = 3
+const configVersion = 4
 
 const cattyDir = join(homedir(), ".catty")
 const nameArgIndex = Bun.argv.indexOf("--name")
@@ -94,7 +94,34 @@ const setConfigVersion = (text: string, version: number) => {
 const migrations: Record<number, (text: string) => string> = {
 	1: (text) => text,
 	2: (text) => text,
-	3: (text) => text
+	3: (text) => text,
+	4: (text) => {
+		if (
+			/^\s*\[web\]\s*$/m.test(text) ||
+			text.includes("# Browser voice UI.")
+		)
+			return text
+		const block = `# Browser voice UI. Disabled by default.
+[web]
+# Serve Catty's voice-first web UI at GET /. Discord keeps using /interactions and /events.
+# enabled = true
+# Host used when enabled. 0.0.0.0 allows LAN/Tailscale clients.
+# host = "0.0.0.0"
+# wakeWord = "hey catty"
+# defaultMode = "Push"
+
+[web.voice]
+# OpenAI v1 reuses [pi.apiKeys].openai or pi's stored OpenAI auth.
+# provider = "openai"
+# transcribeModel = "gpt-4o-mini-transcribe"
+# speechModel = "gpt-4o-mini-tts"
+# voice = "alloy"
+`
+		const marker = "\n# DO NOT CHANGE THIS VALUE\n"
+		if (text.includes(marker))
+			return text.replace(marker, `\n${block}${marker}`)
+		return `${text.trimEnd()}\n\n${block}`
+	}
 }
 
 const storedConfigVersion = getConfigVersion(configText) ?? 0
@@ -162,6 +189,18 @@ export const config = Bun.TOML.parse(configText) as {
 		file?: string
 		intervalMinutes?: number
 		session?: "separate" | "main"
+	}
+	web?: {
+		enabled?: boolean
+		host?: string
+		wakeWord?: string
+		defaultMode?: "Push" | "Wake" | "Always" | "push" | "wake" | "always"
+		voice?: {
+			provider?: string
+			transcribeModel?: string
+			speechModel?: string
+			voice?: string
+		}
 	}
 }
 export const workspace = resolve(
