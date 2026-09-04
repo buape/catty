@@ -83,9 +83,11 @@ verbose = false
 # pollSeconds = 30
 # Max stdout/stderr bytes captured per deterministic script. Default: 200000.
 # maxOutputBytes = 200000
+# What to do with one-off jobs after each run. Default: delete.
+# oneOffCleanup = "delete" # or "archive" to move into jobs/_archive
 
 # DO NOT CHANGE THIS VALUE
-version = 5
+version = 6
 ```
 
 ## Required fields
@@ -122,6 +124,7 @@ Removed/non-configurable values:
 - Jobs enabled: `true`
 - Jobs directory: `~/.catty/workspace/jobs/`
 - Jobs poll interval: `30` seconds
+- One-off job cleanup: `delete` (`archive` moves folders into `jobs/_archive/`)
 - Jobs SQLite state: `~/.catty/workspace/.internal/jobs.sqlite`
 
 ## Providers
@@ -221,7 +224,7 @@ Catty discovers scheduled workspace jobs under:
 ~/.catty/workspace/jobs/<job-id>/
 ```
 
-Each job has `prompt.md`, `meta.toml`, and optional deterministic scripts. Jobs support repeating cron schedules, fixed intervals, and one-off `at` schedules. Pre-check scripts can return `{ "run": false }` to skip pi entirely before model usage.
+Each job has `prompt.md`, `meta.toml`, and optional deterministic scripts. Jobs support repeating cron schedules, fixed intervals, and one-off `at` schedules. Pre-check scripts can return `{ "run": false }` to skip pi entirely before model usage. One-off jobs are cleaned up after each run: deleted by default, or archived under `jobs/_archive/` when `jobs.oneOffCleanup = "archive"`.
 
 Global scheduler settings are optional:
 
@@ -230,6 +233,7 @@ Global scheduler settings are optional:
 # enabled = true
 # pollSeconds = 30
 # maxOutputBytes = 200000
+# oneOffCleanup = "delete" # or "archive"
 ```
 
 A small recurring job:

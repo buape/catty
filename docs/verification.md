@@ -85,7 +85,7 @@ Scheduled jobs use a shared separate in-memory session by default unless a job s
 Expected smoke coverage for scheduler changes:
 
 - migrated heartbeat: `migrateHeartbeatToJob` copies `HEARTBEAT.md` into `jobs/heartbeat/prompt.md`, writes matching interval `meta.toml`, and leaves the source file untouched.
-- one-off `at`: a past `at` job runs once and then stores `nextRunAt = null` in `.internal/jobs.sqlite`.
+- one-off `at`: a past `at` job runs once, stores `nextRunAt = null` in `.internal/jobs.sqlite`, then deletes the job folder by default or archives it with `jobs.oneOffCleanup = "archive"`.
 - recurring/interval calculation: `computeNextRunAt` handles cron and interval schedules.
 - pre-check skip: a check script printing `{ "run": false, "reason": "no unread emails" }` records a skipped run and does not request a pi runtime.
 - context injection: a context script's stdout is wrapped in `<job_context ...>` inside the scheduled prompt.

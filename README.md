@@ -108,7 +108,7 @@ See `docs/jobs.md` for the scheduled job folder contract, deterministic script c
 - User-provided Discord content is wrapped in per-message untrusted begin/end blocks before pi sees it.
 - Catty uses Discord typing indicators while pi is working instead of sending `Thinking…`.
 - Verbose logs show received Discord messages, the exact prompt sent to pi, pi status/events, and final responses.
-- Catty discovers scheduled jobs from `workspace/jobs/<job-id>/meta.toml`. Jobs support cron, interval, and one-off schedules; deterministic checks can skip pi entirely when there is no work; context scripts feed stable input into the prompt; `prompt.md` directs agent-run job scripts through normal tools.
+- Catty discovers scheduled jobs from `workspace/jobs/<job-id>/meta.toml`. Jobs support cron, interval, and one-off schedules; deterministic checks can skip pi entirely when there is no work; context scripts feed stable input into the prompt; `prompt.md` directs agent-run job scripts through normal tools. One-off job folders are deleted after a run by default, or archived under `jobs/_archive/` with `jobs.oneOffCleanup = "archive"`.
 - Legacy `[heartbeat]` config is migrated once into a normal `jobs/heartbeat/` folder while preserving `HEARTBEAT.md`.
 - The built-in `memory` tool uses QMD to update/search/get/append/embed `MEMORY.qmd`; its local SQLite index lives at `.internal/qmd.sqlite` inside the workspace. Job runtime state lives at `.internal/jobs.sqlite`. QMD query-expansion and embedding models are predownloaded at startup.
 

@@ -142,7 +142,7 @@ at = "2026-02-01T15:00:00-05:00"
 timezone = "America/New_York"
 ```
 
-One-off `at` jobs run once. After a successful, skipped, or failed attempt is recorded, Catty marks that scheduled occurrence complete so it will not loop forever. Edit the schedule or create a new job for another one-off task.
+One-off `at` jobs run once. After a successful, skipped, or failed attempt is recorded, Catty marks that occurrence complete and cleans up the whole job folder. Default cleanup deletes the folder. Set `jobs.oneOffCleanup = "archive"` to move it into `jobs/_archive/` instead; `_archive` is ignored by discovery. Edit the archived copy or create a new job for another one-off task.
 
 ## Deterministic script command rules
 
@@ -283,7 +283,7 @@ The database is disposable runtime state. Job definitions remain the source of t
 - Check skipped the model: inspect the check stdout and skip reason in the `runs` and `script_runs` tables.
 - Check/context script rejected as unsafe: point `run` at a script file inside the job folder, e.g. `bun scripts/check.ts`; shell pipelines and redirects are intentionally rejected for pre-agent scripts.
 - Script timed out or output was cut off: increase `timeoutSeconds` for that script or reduce stdout/stderr. The global capture limit defaults to `jobs.maxOutputBytes = 200000`.
-- One-off job ran once and stopped: this is expected. Edit the `at` schedule or create a new job for another one-off run.
+- One-off job ran once and disappeared: this is expected. Default cleanup deletes `at` job folders; set `jobs.oneOffCleanup = "archive"` to keep them under `jobs/_archive/`.
 
 ## Heartbeat migration
 

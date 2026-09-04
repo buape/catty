@@ -5,6 +5,7 @@ import {
 	mkdirSync,
 	readdirSync,
 	readFileSync,
+	renameSync,
 	rmSync,
 	statSync,
 	writeFileSync
@@ -155,7 +156,7 @@ const jobsSchema = Type.Union([
 		jobId: Type.Optional(
 			Type.String({
 				description:
-					"Optional folder id. Omit to derive one from title. Letters, numbers, dash, underscore only."
+					"Optional folder id. Omit to derive one from title. Letters, numbers, dash, underscore only. _archive is reserved."
 			})
 		),
 		title: Type.Optional(Type.String()),
@@ -208,6 +209,7 @@ type JobsConfig = {
 	enabled?: boolean
 	pollSeconds?: number
 	maxOutputBytes?: number
+	oneOffCleanup?: "delete" | "archive"
 }
 
 type LegacyHeartbeatConfig = {
@@ -844,7 +846,7 @@ class JobsTool extends Tool<typeof jobsSchema> {
 	name = "jobs"
 	label = "Catty Jobs"
 	description =
-		"Create, inspect, cancel, and run Catty workspace jobs. Use this naturally when the user asks for reminders, one-off scheduled tasks, recurring checks, periodic monitoring, or reliable scheduled workflows. Jobs live in workspace/jobs/<job-id>/ with prompt.md + meta.toml. Pre-check and context scripts are configured in meta.toml; agent-run script instructions belong in prompt.md and can be run with normal agent tools."
+		"Create, inspect, cancel, and run Catty workspace jobs. Use this naturally when the user asks for reminders, one-off scheduled tasks, recurring checks, periodic monitoring, or reliable scheduled workflows. Jobs live in workspace/jobs/<job-id>/ with prompt.md + meta.toml. One-off jobs are cleaned up after each run. Pre-check and context scripts are configured in meta.toml; agent-run script instructions belong in prompt.md and can be run with normal agent tools."
 	parameters = jobsSchema
 
 	constructor(private controller: JobsController) {
@@ -900,6 +902,7 @@ export class JobsController {
 	private running = new Set<string>()
 	private ticking = false
 	private maxOutputBytes: number
+	private oneOffCleanup: "delete" | "archive"
 
 	constructor(
 		private workspace: string,
@@ -910,6 +913,9 @@ export class JobsController {
 		this.jobsDir = join(workspace, "jobs")
 		this.dbPath = join(internalDir, "jobs.sqlite")
 		this.maxOutputBytes = jobsConfig?.maxOutputBytes ?? 200_000
+		this.oneOffCleanup = jobsConfig?.oneOffCleanup ?? "delete"
+		if (this.oneOffCleanup !== "delete" && this.oneOffCleanup !== "archive")
+			throw new Error('jobs.oneOffCleanup must be "delete" or "archive"')
 		mkdirSync(this.jobsDir, { recursive: true })
 		mkdirSync(dirname(this.dbPath), { recursive: true })
 		this.db = new Database(this.dbPath)
@@ -995,9 +1001,9 @@ export class JobsController {
 		const jobId = params.jobId
 			? slugify(params.jobId)
 			: slugify(params.title ?? "job")
-		if (!isSafeId(jobId))
+		if (!isSafeId(jobId) || jobId === "_archive")
 			throw new Error(
-				"jobId must use letters, numbers, dash, or underscore"
+				"jobId must use letters, numbers, dash, or underscore and cannot be _archive"
 			)
 		const prompt = params.prompt.trim()
 		if (!prompt) throw new Error("prompt must be non-empty")
@@ -1097,6 +1103,7 @@ export class JobsController {
 
 	queueRunNow(jobId: string, bypassChecks: boolean) {
 		const job = this.requireJob(jobId)
+		this.syncState(job)
 		void this.runJob(
 			job,
 			{ manual: true, scheduledFor: new Date() },
@@ -1184,7 +1191,12 @@ export class JobsController {
 		for (const entry of readdirSync(this.jobsDir, {
 			withFileTypes: true
 		})) {
-			if (!entry.isDirectory() || !isSafeId(entry.name)) continue
+			if (
+				!entry.isDirectory() ||
+				entry.name === "_archive" ||
+				!isSafeId(entry.name)
+			)
+				continue
 			try {
 				jobs.push(this.readJob(entry.name))
 			} catch (error) {
@@ -1198,9 +1210,9 @@ export class JobsController {
 	}
 
 	private readJob(jobId: string): JobDefinition {
-		if (!isSafeId(jobId))
+		if (!isSafeId(jobId) || jobId === "_archive")
 			throw new Error(
-				"jobId must use letters, numbers, dash, or underscore"
+				"jobId must use letters, numbers, dash, or underscore and cannot be _archive"
 			)
 		const dir = join(this.jobsDir, jobId)
 		const metaPath = join(dir, "meta.toml")
@@ -1455,6 +1467,7 @@ export class JobsController {
 		data: { response?: string; skipReason?: string; error?: string }
 	) {
 		const finishedAt = nowIso()
+		const oneOffCompleted = job.config.schedule.type === "at"
 		this.db
 			.prepare(
 				"UPDATE runs SET status = ?, finished_at = ?, response = ?, skip_reason = ?, error = ? WHERE id = ?"
@@ -1471,7 +1484,10 @@ export class JobsController {
 		if (manual) {
 			this.db
 				.prepare(
-					"UPDATE job_state SET last_run_at = ?, last_status = ?, consecutive_failures = ?, updated_at = ? WHERE job_id = ?"
+					`UPDATE job_state SET
+						last_run_at = ?, last_status = ?, consecutive_failures = ?,
+						one_off_completed = ?, next_run_at = ?, updated_at = ?
+					WHERE job_id = ?`
 				)
 				.run(
 					finishedAt,
@@ -1479,12 +1495,14 @@ export class JobsController {
 					status === "error"
 						? (existing?.consecutive_failures ?? 0) + 1
 						: 0,
+					oneOffCompleted ? 1 : (existing?.one_off_completed ?? 0),
+					oneOffCompleted ? null : (existing?.next_run_at ?? null),
 					finishedAt,
 					job.id
 				)
+			if (oneOffCompleted) this.cleanupOneOffJob(job)
 			return
 		}
-		const oneOffCompleted = job.config.schedule.type === "at"
 		const nextRun = oneOffCompleted
 			? null
 			: computeNextRunAt(
@@ -1510,6 +1528,32 @@ export class JobsController {
 				finishedAt,
 				job.id
 			)
+		if (oneOffCompleted) this.cleanupOneOffJob(job)
+	}
+
+	private cleanupOneOffJob(job: JobDefinition) {
+		try {
+			if (!existsSync(job.dir)) return
+			if (this.oneOffCleanup === "delete") {
+				rmSync(job.dir, { recursive: true, force: true })
+				console.log(`[jobs] deleted one-off ${job.id}`)
+				return
+			}
+			const archiveDir = join(this.jobsDir, "_archive")
+			mkdirSync(archiveDir, { recursive: true })
+			let target = join(archiveDir, job.id)
+			for (let index = 2; existsSync(target); index++)
+				target = join(archiveDir, `${job.id}-${index}`)
+			renameSync(job.dir, target)
+			console.log(
+				`[jobs] archived one-off ${job.id} to ${relative(this.workspace, target)}`
+			)
+		} catch (error) {
+			console.error(
+				`[jobs] failed to ${this.oneOffCleanup} one-off ${job.id}`,
+				error
+			)
+		}
 	}
 
 	private buildPrompt(

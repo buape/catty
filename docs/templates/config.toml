@@ -80,6 +80,8 @@ verbose = false
 # pollSeconds = 30
 # Max stdout/stderr bytes captured per deterministic script. Default: 200000.
 # maxOutputBytes = 200000
+# What to do with one-off jobs after each run. Default: delete.
+# oneOffCleanup = "delete" # or "archive" to move into jobs/_archive
 
 # Browser voice UI. Disabled by default.
 [web]
@@ -98,4 +100,4 @@ verbose = false
 # voice = "alloy"
 
 # DO NOT CHANGE THIS VALUE
-version = 5
+version = 6

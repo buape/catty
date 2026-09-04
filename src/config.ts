@@ -12,7 +12,7 @@ import { homedir } from "node:os"
 import { dirname, extname, join, relative, resolve } from "node:path"
 import templateConfig from "../docs/templates/config.toml" with { type: "text" }
 
-const configVersion = 5
+const configVersion = 6
 
 const cattyDir = join(homedir(), ".catty")
 const nameArgIndex = Bun.argv.indexOf("--name")
@@ -141,6 +141,29 @@ const migrations: Record<number, (text: string) => string> = {
 		if (text.includes(marker))
 			return text.replace(marker, `\n${block}${marker}`)
 		return `${text.trimEnd()}\n\n${block}`
+	},
+	6: (text) => {
+		if (text.includes("oneOffCleanup")) return text
+		const lines = text.split("\n")
+		const jobsIndex = lines.findIndex((line) =>
+			/^\s*\[jobs\]\s*$/.test(line)
+		)
+		if (jobsIndex === -1) return text
+		let insertIndex = jobsIndex + 1
+		while (
+			insertIndex < lines.length &&
+			!/^(\s*$|\s*\[.+\]\s*|\s*# DO NOT CHANGE THIS VALUE\s*)$/.test(
+				lines[insertIndex] ?? ""
+			)
+		)
+			insertIndex++
+		lines.splice(
+			insertIndex,
+			0,
+			"# What to do with one-off jobs after each run. Default: delete.",
+			'# oneOffCleanup = "delete" # or "archive" to move into jobs/_archive'
+		)
+		return lines.join("\n")
 	}
 }
 
@@ -208,6 +231,7 @@ export const config = Bun.TOML.parse(configText) as {
 		enabled?: boolean
 		pollSeconds?: number
 		maxOutputBytes?: number
+		oneOffCleanup?: "delete" | "archive"
 	}
 	heartbeat?: {
 		enabled?: boolean

@@ -41,7 +41,7 @@ Maintenance prompts are deliberate exceptions so they do not pollute resumed Dis
 
 The example config is written automatically on first launch, along with `AGENTS.md`, `.gitignore`, and the canonical workspace `MEMORY.qmd`. Catty exits immediately so the user can fill them out before the first real run.
 
-Config contains a `version = 5` schema marker. `src/config.ts` has a hardcoded config version and a simple text migration table. If the code version increases, migrations run before TOML parsing and update the version line.
+Config contains a `version = 6` schema marker. `src/config.ts` has a hardcoded config version and a simple text migration table. If the code version increases, migrations run before TOML parsing and update the version line.
 
 Full config reference lives in `docs/config.md`.
 
@@ -61,7 +61,7 @@ Declarative job definitions live in `workspace/jobs/<job-id>/`. Runtime state li
 - `runs` records each scheduled or manual execution, including prompt, final response, skip reason, and errors.
 - `script_runs` records deterministic pre-agent check/context script executions with command, exit code, bounded stdout/stderr, and errors.
 
-The scheduler does not edit job files during normal runs. It scans, validates, updates SQLite, then executes due jobs. A due job runs checks first; any check returning `{ "run": false }` marks the run skipped and avoids the model call. Context scripts run next and their stdout is wrapped into the pi prompt. Agent-run deterministic script instructions live in `prompt.md`, not `meta.toml`.
+The scheduler scans, validates, updates SQLite, then executes due jobs. A due job runs checks first; any check returning `{ "run": false }` marks the run skipped and avoids the model call. Context scripts run next and their stdout is wrapped into the pi prompt. Agent-run deterministic script instructions live in `prompt.md`, not `meta.toml`. Completed one-off `at` job folders are deleted by default or moved into `jobs/_archive/` when configured.
 
 Legacy heartbeat migration is compatibility-only. If old `[heartbeat]` config is enabled, startup copies `HEARTBEAT.md` into a normal job folder and leaves the old file in place.
 
