@@ -14,11 +14,15 @@ It must be a PAT that can call `repository_dispatch` on `buape/tap`.
 
 ## Catty release flow
 
+Update the version in package.json
+
+Commit with `chore: release`
+
 Push a semver tag:
 
 ```bash
 git tag v0.1.0
-git push origin v0.1.0
+git push && git push --tags
 ```
 
 `.github/workflows/release.yml` will:
