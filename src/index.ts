@@ -7,7 +7,10 @@ import {
 } from "node:fs"
 import { homedir, platform, userInfo } from "node:os"
 import { dirname, join, resolve } from "node:path"
+import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth"
 import { getAgentDir, ModelRuntime } from "@earendil-works/pi-coding-agent"
+
+registerBunOAuthFlows()
 
 const run = async (command: string[]) => {
 	console.log(`$ ${command.join(" ")}`)
