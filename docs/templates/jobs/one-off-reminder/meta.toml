@@ -1,0 +1,10 @@
+# One-off `at` job example. Copy this folder into ~/.catty/workspace/jobs/one-off-reminder.
+
+enabled = true
+session = "separate"
+priority = "low"
+
+[schedule]
+type = "at"
+at = "2026-02-01T15:00:00-05:00"
+timezone = "America/New_York"

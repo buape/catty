@@ -1,0 +1,22 @@
+# Example Catty job. Copy this folder into ~/.catty/workspace/jobs/email-triage
+# and replace the scripts with your own deterministic email commands.
+
+enabled = true
+session = "separate"
+priority = "low"
+
+[schedule]
+type = "cron"
+expr = "*/15 * * * *"
+timezone = "America/New_York"
+
+[[checks]]
+id = "new-email"
+run = "bun scripts/check.ts"
+timeoutSeconds = 30
+
+[[context]]
+id = "email-summary"
+run = "bun scripts/context.ts"
+format = "markdown"
+timeoutSeconds = 60

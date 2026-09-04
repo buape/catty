@@ -1,0 +1,15 @@
+# Interval job example. Copy this folder into ~/.catty/workspace/jobs/interval-maintenance.
+
+enabled = true
+session = "separate"
+priority = "low"
+
+[schedule]
+type = "interval"
+minutes = 30
+
+[[context]]
+id = "maintenance-status"
+run = "bun scripts/status.ts"
+format = "markdown"
+timeoutSeconds = 30

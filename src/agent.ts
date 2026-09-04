@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs"
+import { readFileSync } from "node:fs"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
@@ -33,6 +33,7 @@ import {
 	readPostMigrationPrompts,
 	workspace
 } from "./config"
+import { createJobsController, migrateHeartbeatToJob } from "./jobs"
 import { createReactionListeners } from "./listeners/reactions"
 import { cattySystemPrompt } from "./prompt"
 import { createDiscordTool } from "./tools/discord"
@@ -43,10 +44,6 @@ export async function startCatty(options?: { newSession?: boolean }) {
 	const agentDir = String(config.pi?.agentDir ?? getAgentDir()).replace(
 		/^~(?=$|\/)/,
 		homedir()
-	)
-	const heartbeatPath = join(
-		workspace,
-		config.heartbeat?.file ?? "HEARTBEAT.md"
 	)
 	console.log(`[catty] QMD memory loaded into pi context: ${memoryPath}`)
 	console.log(
@@ -97,6 +94,17 @@ export async function startCatty(options?: { newSession?: boolean }) {
 
 	const memoryTool = createMemoryTool(workspace, memoryPath)
 	await memoryTool.predownload()
+	const heartbeatMigration = migrateHeartbeatToJob({
+		workspace,
+		internalDir: cattyWorkspaceDir,
+		heartbeat: config.heartbeat
+	})
+	if (heartbeatMigration.migrated)
+		console.log(`[jobs] migrated heartbeat to ${heartbeatMigration.path}`)
+	else if (config.heartbeat?.enabled === true)
+		console.log(
+			`[jobs] heartbeat migration skipped: ${heartbeatMigration.reason}`
+		)
 	const assistantText = (message: unknown) =>
 		message &&
 		typeof message === "object" &&
@@ -220,6 +228,17 @@ export async function startCatty(options?: { newSession?: boolean }) {
 
 	let client: Client
 	const discordTool = createDiscordTool(() => client)
+	const jobs = createJobsController({
+		workspace,
+		internalDir: cattyWorkspaceDir,
+		finalAssistantText,
+		config: config.jobs
+	})
+	const customTools = [
+		discordTool,
+		memoryTool.definition,
+		jobs.toolDefinition
+	]
 
 	const channelSessions = config.pi?.channelSessions === true
 	const createPiSession = async (sessionDir?: string) => {
@@ -229,7 +248,7 @@ export async function startCatty(options?: { newSession?: boolean }) {
 			modelRuntime,
 			resourceLoader,
 			settingsManager,
-			customTools: [discordTool, memoryTool.definition],
+			customTools,
 			sessionManager: options?.newSession
 				? SessionManager.create(workspace, sessionDir)
 				: SessionManager.continueRecent(workspace, sessionDir),
@@ -250,35 +269,6 @@ export async function startCatty(options?: { newSession?: boolean }) {
 		console.log(
 			"[pi] channelSessions enabled: Discord channels use separate pi sessions"
 		)
-
-	let heartbeatSession = session
-	if (
-		config.heartbeat?.enabled === true &&
-		(config.heartbeat?.session ?? "separate") === "separate"
-	) {
-		const {
-			session: separateHeartbeatSession,
-			modelFallbackMessage: heartbeatModelFallbackMessage
-		} = await createAgentSession({
-			cwd: workspace,
-			agentDir,
-			modelRuntime,
-			resourceLoader,
-			settingsManager,
-			customTools: [discordTool, memoryTool.definition],
-			sessionManager: SessionManager.inMemory(workspace),
-			...(model ? { model } : {}),
-			...(config.pi?.thinking
-				? { thinkingLevel: config.pi.thinking }
-				: {})
-		})
-		heartbeatSession = separateHeartbeatSession
-		if (heartbeatModelFallbackMessage)
-			console.log(`[heartbeat] ${heartbeatModelFallbackMessage}`)
-		console.log(
-			`[heartbeat] session: ${heartbeatSession.sessionFile ?? heartbeatSession.sessionId}`
-		)
-	}
 
 	const createPiQueue = () => {
 		const piJobs: Array<{
@@ -329,6 +319,36 @@ export async function startCatty(options?: { newSession?: boolean }) {
 			})
 	}
 	const enqueuePi = createPiQueue()
+	let separateJobsRuntime:
+		| Promise<{
+				session: AgentSession
+				enqueuePi: ReturnType<typeof createPiQueue>
+		  }>
+		| undefined
+	const getSeparateJobsRuntime = () => {
+		separateJobsRuntime ??= (async () => {
+			const { session, modelFallbackMessage } = await createAgentSession({
+				cwd: workspace,
+				agentDir,
+				modelRuntime,
+				resourceLoader,
+				settingsManager,
+				customTools,
+				sessionManager: SessionManager.inMemory(workspace),
+				...(model ? { model } : {}),
+				...(config.pi?.thinking
+					? { thinkingLevel: config.pi.thinking }
+					: {})
+			})
+			if (modelFallbackMessage)
+				console.log(`[jobs] ${modelFallbackMessage}`)
+			console.log(
+				`[jobs] separate session: ${session.sessionFile ?? session.sessionId}`
+			)
+			return { session, enqueuePi: createPiQueue() }
+		})()
+		return separateJobsRuntime
+	}
 	const channelPiRuntimes = new Map<
 		string,
 		Promise<{
@@ -977,78 +997,28 @@ ${content || "[no text content]"}
 		fetch: async (request) =>
 			(await web?.handleRequest(request)) ?? carbonHandler(request, {})
 	})
-	let heartbeatQueue = Promise.resolve()
-
-	const heartbeatInterval = setInterval(
-		() => {
-			if (config.heartbeat?.enabled !== true) return
-			if (!existsSync(heartbeatPath)) {
-				console.log("[heartbeat] skipped; HEARTBEAT.md not found")
-				return
-			}
-
-			const heartbeat = readFileSync(heartbeatPath, "utf8").trim()
-			if (!heartbeat) {
-				console.log("[heartbeat] skipped; HEARTBEAT.md is empty")
-				return
-			}
-
-			const piPrompt = `Hourly heartbeat from workspace HEARTBEAT.md. Treat this file as trusted workspace guidance.\n\n<begin_heartbeat_md>\n${heartbeat}\n<end_heartbeat_md>`
-			console.log("[heartbeat] prompt queued")
-			console.log(`[heartbeat] exact prompt:\n---\n${piPrompt}\n---`)
-
-			const runHeartbeat = async () => {
-				console.log("[heartbeat] prompt started")
-				let text = ""
-				const unsubscribe = heartbeatSession.subscribe((event) => {
-					if (event.type === "agent_end") {
-						text = finalAssistantText(event.messages)
-						return
-					}
-					try {
-						console.log(
-							"[heartbeat] pi event",
-							JSON.stringify(event)
-						)
-					} catch {
-						console.log("[heartbeat] pi event", event.type)
-					}
-				})
-
-				try {
-					await heartbeatSession.prompt(piPrompt)
-				} finally {
-					unsubscribe()
-				}
-
-				console.log(
-					"[heartbeat] final response:\n---\n" +
-						(text.trim() || "No text response.") +
-						"\n---"
-				)
-			}
-			const job =
-				heartbeatSession === session
-					? enqueuePi(runHeartbeat)
-					: heartbeatQueue.then(runHeartbeat)
-			heartbeatQueue = job.catch(() => {})
-			job.catch((error) => console.error("[heartbeat] error", error))
-		},
-		(config.heartbeat?.intervalMinutes ?? 60) * 60 * 1000
-	)
+	jobs.start({
+		enabled: config.jobs?.enabled,
+		pollSeconds: config.jobs?.pollSeconds,
+		getRuntime: (mode) =>
+			mode === "main"
+				? Promise.resolve({ session, enqueuePi })
+				: getSeparateJobsRuntime()
+	})
 
 	console.log(`Catty running at http://localhost:${port}`)
 	console.log(`Workspace: ${workspace}`)
-	console.log(`Heartbeat: ${heartbeatPath}`)
+	console.log(`Jobs: ${jobs.jobsDir}`)
 
 	for (const signal of ["SIGINT", "SIGTERM"] as const) {
 		process.on(signal, async () => {
-			clearInterval(heartbeatInterval)
+			jobs.dispose()
 			gateway.disconnect()
 			for (const runtime of channelPiRuntimes.values())
 				(await runtime).session.dispose()
 			if (voicePiRuntime) (await voicePiRuntime).session.dispose()
-			if (heartbeatSession !== session) heartbeatSession.dispose()
+			if (separateJobsRuntime)
+				(await separateJobsRuntime).session.dispose()
 			session.dispose()
 			web?.dispose()
 			server.stop()

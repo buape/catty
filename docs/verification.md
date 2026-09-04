@@ -13,7 +13,6 @@ bun run release
 
 Unavailable:
 
-- no `lint` script in `package.json`
 - no `test` script in `package.json`
 
 ## Binary outputs
@@ -79,7 +78,18 @@ Matches required behavior:
 
 When `[pi].channelSessions = true`, `src/agent.ts` lazily creates a persistent session and queue per Discord channel so different channels can run simultaneously. The default remains a single shared session.
 
-Heartbeat uses a dedicated separate in-memory session by default unless `[heartbeat].session = "main"`. Queued migration prompts run before the main session starts via `SessionManager.inMemory(workspace)`, then Catty reloads resources and creates the main session.
+Scheduled jobs use a shared separate in-memory session by default unless a job sets `session = "main"`. `session = "main"` jobs enter the same main queue as Discord messages, usually with `priority = "low"`. Queued migration prompts run before the main session starts via `SessionManager.inMemory(workspace)`, then Catty reloads resources and creates the main session.
+
+## Jobs smoke inspection
+
+Expected smoke coverage for scheduler changes:
+
+- migrated heartbeat: `migrateHeartbeatToJob` copies `HEARTBEAT.md` into `jobs/heartbeat/prompt.md`, writes matching interval `meta.toml`, and leaves the source file untouched.
+- one-off `at`: a past `at` job runs once and then stores `nextRunAt = null` in `.internal/jobs.sqlite`.
+- recurring/interval calculation: `computeNextRunAt` handles cron and interval schedules.
+- pre-check skip: a check script printing `{ "run": false, "reason": "no unread emails" }` records a skipped run and does not request a pi runtime.
+- context injection: a context script's stdout is wrapped in `<job_context ...>` inside the scheduled prompt.
+- agent-run script guidance: action scripts are not declared in `meta.toml`; script instructions live in `prompt.md`, while the agent may use normal tools for work outside that guidance.
 
 ## KISS inspection
 

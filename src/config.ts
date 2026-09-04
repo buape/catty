@@ -12,7 +12,7 @@ import { homedir } from "node:os"
 import { dirname, extname, join, relative, resolve } from "node:path"
 import templateConfig from "../docs/templates/config.toml" with { type: "text" }
 
-const configVersion = 4
+const configVersion = 5
 
 const cattyDir = join(homedir(), ".catty")
 const nameArgIndex = Bun.argv.indexOf("--name")
@@ -121,6 +121,26 @@ const migrations: Record<number, (text: string) => string> = {
 		if (text.includes(marker))
 			return text.replace(marker, `\n${block}${marker}`)
 		return `${text.trimEnd()}\n\n${block}`
+	},
+	5: (text) => {
+		if (
+			/^\s*\[jobs\]\s*$/m.test(text) ||
+			text.includes("# Workspace job scheduler.")
+		)
+			return text
+		const block = `# Workspace job scheduler. Jobs live under workspace/jobs/<job-id>/.
+[jobs]
+# Discover and run workspace jobs. Default: true.
+# enabled = true
+# Seconds between scheduler scans. Default: 30.
+# pollSeconds = 30
+# Max stdout/stderr bytes captured per deterministic script. Default: 200000.
+# maxOutputBytes = 200000
+`
+		const marker = "\n# DO NOT CHANGE THIS VALUE\n"
+		if (text.includes(marker))
+			return text.replace(marker, `\n${block}${marker}`)
+		return `${text.trimEnd()}\n\n${block}`
 	}
 }
 
@@ -184,8 +204,13 @@ export const config = Bun.TOML.parse(configText) as {
 			}
 		>
 	}
+	jobs?: {
+		enabled?: boolean
+		pollSeconds?: number
+		maxOutputBytes?: number
+	}
 	heartbeat?: {
-		enabled: boolean
+		enabled?: boolean
 		file?: string
 		intervalMinutes?: number
 		session?: "separate" | "main"
@@ -238,6 +263,7 @@ if (existsSync(legacyCattyWorkspaceDir)) {
 }
 mkdirSync(cattyWorkspaceDir, { recursive: true })
 mkdirSync(join(workspace, "skills"), { recursive: true })
+mkdirSync(join(workspace, "jobs"), { recursive: true })
 mkdirSync(join(workspace, ".pi/extensions"), { recursive: true })
 
 const workspaceGitignorePath = join(workspace, ".gitignore")
@@ -388,6 +414,7 @@ if (firstLaunch) {
 	console.log(`- ${configPath}`)
 	console.log(`- ${join(workspace, "AGENTS.md")}`)
 	console.log(`- ${memoryPath}`)
+	console.log(`- ${join(workspace, "jobs")}`)
 	console.log(`- ${workspaceGitignorePath}`)
 	console.log("")
 	console.log(

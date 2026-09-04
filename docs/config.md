@@ -20,13 +20,13 @@ First-launch workspace files:
 - `AGENTS.md`
 - `MEMORY.qmd`
 - `.gitignore`
+- `jobs/`
 - `skills/`
 - `.pi/extensions/`
 
 ## Minimal required config
 
 ```toml
-[discord]
 token = "your-discord-bot-token"
 ```
 
@@ -76,23 +76,25 @@ verbose = false
 # [responses.guilds."guild-id".channels."channel-id"]
 # mode = "mention-or-reply"
 
-[heartbeat]
-# Required to turn heartbeat on. Default: false.
+[jobs]
+# Discover and run workspace jobs from workspace/jobs/<job-id>/. Default: true.
 # enabled = true
-# file = "HEARTBEAT.md"
-# intervalMinutes = 60
+# Seconds between scheduler scans. Default: 30.
+# pollSeconds = 30
+# Max stdout/stderr bytes captured per deterministic script. Default: 200000.
+# maxOutputBytes = 200000
 
 # DO NOT CHANGE THIS VALUE
-version = 3
+version = 5
 ```
 
 ## Required fields
 
-- `discord.token`
+- `token`
 
 `version` is Catty's config schema version. Do not edit it manually; Catty updates it when migrations run.
 
-Heartbeat is disabled unless `heartbeat.enabled = true` is present in config.
+Legacy `[heartbeat]` config is still read only for one-time migration into `workspace/jobs/heartbeat/`. New configs should use workspace jobs instead.
 
 Removed/non-configurable values:
 
@@ -117,9 +119,10 @@ Removed/non-configurable values:
 - Response mode: `all`
 - Prefix mode prefix: `!catty`
 - Channel sessions: `false` (all Discord channels share one main pi session)
-- Heartbeat enabled: `false`
-- Heartbeat file: `HEARTBEAT.md`
-- Heartbeat interval: `60` minutes
+- Jobs enabled: `true`
+- Jobs directory: `~/.catty/workspace/jobs/`
+- Jobs poll interval: `30` seconds
+- Jobs SQLite state: `~/.catty/workspace/.internal/jobs.sqlite`
 
 ## Providers
 
@@ -210,19 +213,57 @@ channelSessions = true
 
 When enabled, each Discord channel gets its own persistent pi session under Catty's internal workspace state. Messages and reaction context from the same channel are still queued in order for that channel.
 
-## Heartbeat
+## Jobs
 
-Heartbeat is an optional hourly-style prompt from a workspace file. By default it uses a dedicated separate in-memory pi session so maintenance chatter does not pollute or get resumed as the Discord conversation session. Set `session = "main"` to run heartbeat prompts through the main Discord session queue instead.
+Catty discovers scheduled workspace jobs under:
 
-```toml
-[heartbeat]
-enabled = true
-# file = "HEARTBEAT.md"
-# intervalMinutes = 60
-# session = "separate"
+```text
+~/.catty/workspace/jobs/<job-id>/
 ```
 
-When enabled, Catty reads the configured file relative to the workspace, skips missing/empty files, and logs the exact heartbeat prompt and final pi response.
+Each job has `prompt.md`, `meta.toml`, and optional deterministic scripts. Jobs support repeating cron schedules, fixed intervals, and one-off `at` schedules. Pre-check scripts can return `{ "run": false }` to skip pi entirely before model usage.
+
+Global scheduler settings are optional:
+
+```toml
+[jobs]
+# enabled = true
+# pollSeconds = 30
+# maxOutputBytes = 200000
+```
+
+A small recurring job:
+
+```toml
+# ~/.catty/workspace/jobs/hourly-maintenance/meta.toml
+enabled = true
+session = "separate"
+priority = "low"
+
+[schedule]
+type = "cron"
+expr = "0 * * * *"
+timezone = "America/New_York"
+```
+
+A one-off job:
+
+```toml
+# ~/.catty/workspace/jobs/domain-renewal/meta.toml
+enabled = true
+session = "separate"
+priority = "low"
+
+[schedule]
+type = "at"
+at = "2026-02-01T15:00:00-05:00"
+```
+
+See `docs/jobs.md` for the full `meta.toml` contract, deterministic script contracts, examples, troubleshooting, and heartbeat migration details.
+
+## Legacy heartbeat migration
+
+Legacy `[heartbeat]` config is no longer the runtime scheduler. On startup, if `[heartbeat].enabled = true` and the heartbeat file exists with content, Catty copies that content into `jobs/heartbeat/prompt.md`, writes an interval `meta.toml` matching `intervalMinutes`, leaves the original `HEARTBEAT.md` untouched, and records `.internal/heartbeat-job-migration.json` so it does not duplicate the job.
 
 ## Memory
 

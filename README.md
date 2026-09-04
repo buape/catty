@@ -91,11 +91,13 @@ Created under `~/.catty/workspace` by default:
 - `MEMORY.qmd` — durable user context, preferences, reusable notes, agent name, and personality; indexed by QMD for memory search/retrieval.
 - `.gitignore` — ignores Catty internal workspace state.
 - Migration artifacts may be staged under `_migrated/`; post-migration side sessions organize durable content into `MEMORY.qmd` without condensing it.
-- `HEARTBEAT.md` — optional heartbeat prompt source when enabled.
+- `jobs/` — Catty scheduled jobs. Each job lives in `jobs/<job-id>/` with `prompt.md`, `meta.toml`, and optional deterministic scripts.
 - `skills/` — pi skills.
 - `.pi/extensions/` — pi extensions.
 
 Catty's own harness system prompt is embedded in code at `src/prompt.ts`.
+
+See `docs/jobs.md` for the scheduled job folder contract, deterministic script contracts, examples, and heartbeat migration behavior.
 
 ## Runtime behavior
 
@@ -106,8 +108,9 @@ Catty's own harness system prompt is embedded in code at `src/prompt.ts`.
 - User-provided Discord content is wrapped in per-message untrusted begin/end blocks before pi sees it.
 - Catty uses Discord typing indicators while pi is working instead of sending `Thinking…`.
 - Verbose logs show received Discord messages, the exact prompt sent to pi, pi status/events, and final responses.
-- Optional heartbeat prompts run from `HEARTBEAT.md` only when `[heartbeat].enabled = true` is set; they use a dedicated separate in-memory pi session by default unless `[heartbeat].session = "main"`.
-- The built-in `memory` tool uses QMD to update/search/get/append/embed `MEMORY.qmd`; its local SQLite index lives at `.internal/qmd.sqlite` inside the workspace. QMD query-expansion and embedding models are predownloaded at startup.
+- Catty discovers scheduled jobs from `workspace/jobs/<job-id>/meta.toml`. Jobs support cron, interval, and one-off schedules; deterministic checks can skip pi entirely when there is no work; context scripts feed stable input into the prompt; `prompt.md` directs agent-run job scripts through normal tools.
+- Legacy `[heartbeat]` config is migrated once into a normal `jobs/heartbeat/` folder while preserving `HEARTBEAT.md`.
+- The built-in `memory` tool uses QMD to update/search/get/append/embed `MEMORY.qmd`; its local SQLite index lives at `.internal/qmd.sqlite` inside the workspace. Job runtime state lives at `.internal/jobs.sqlite`. QMD query-expansion and embedding models are predownloaded at startup.
 
 ## Services
 

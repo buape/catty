@@ -1,0 +1,1 @@
+Check Shadow's unread email summary. If anything looks important or time-sensitive, send him a concise Discord message with what needs attention. When an email is clearly handled, run `bash scripts/mark-read.sh <email-id>`.
