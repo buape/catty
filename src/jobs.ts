@@ -68,6 +68,10 @@ type JobRuntime = {
 		run: () => Promise<void>,
 		options?: { lowPriority?: boolean }
 	) => Promise<void>
+	promptSession?: (
+		text: string,
+		options?: Parameters<AgentSession["prompt"]>[1]
+	) => Promise<void>
 }
 type RunJobOptions = { manual?: boolean; scheduledFor?: Date }
 type ScriptExecution = {
@@ -1412,7 +1416,8 @@ export class JobsController {
 							)
 					})
 					try {
-						await runtime.session.prompt(piPrompt)
+						await (runtime.promptSession?.(piPrompt) ??
+							runtime.session.prompt(piPrompt))
 					} finally {
 						unsubscribe()
 					}

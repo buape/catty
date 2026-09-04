@@ -18,6 +18,10 @@ type WebRuntime = {
 		run: () => Promise<void>,
 		options?: { lowPriority?: boolean }
 	) => Promise<void>
+	promptSession?: (
+		text: string,
+		options?: Parameters<AgentSession["prompt"]>[1]
+	) => Promise<void>
 }
 
 type WebConfig = {
@@ -317,10 +321,10 @@ export const createCattyWeb = ({
 				})
 				try {
 					const boundary = runId.replace(/-/g, "")
-					await runtime.session.prompt(
-						`Catty web ${fromVoice ? "voice" : "text"} message from the LAN web UI.\n\n<begin_untrusted_web_message_${boundary}>\n${text}\n<end_untrusted_web_message_${boundary}>`,
-						{ source: "rpc" }
-					)
+					const webPrompt = `Catty web ${fromVoice ? "voice" : "text"} message from the LAN web UI.\n\n<begin_untrusted_web_message_${boundary}>\n${text}\n<end_untrusted_web_message_${boundary}>`
+					await (runtime.promptSession?.(webPrompt, {
+						source: "rpc"
+					}) ?? runtime.session.prompt(webPrompt, { source: "rpc" }))
 				} finally {
 					unsubscribe()
 				}

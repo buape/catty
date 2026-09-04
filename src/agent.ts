@@ -241,7 +241,10 @@ export async function startCatty(options?: { newSession?: boolean }) {
 	]
 
 	const channelSessions = config.pi?.channelSessions === true
-	const createPiSession = async (sessionDir?: string) => {
+	const createPiSession = async (
+		sessionDir?: string,
+		forceNewSession = false
+	) => {
 		const { session, modelFallbackMessage } = await createAgentSession({
 			cwd: workspace,
 			agentDir,
@@ -249,9 +252,10 @@ export async function startCatty(options?: { newSession?: boolean }) {
 			resourceLoader,
 			settingsManager,
 			customTools,
-			sessionManager: options?.newSession
-				? SessionManager.create(workspace, sessionDir)
-				: SessionManager.continueRecent(workspace, sessionDir),
+			sessionManager:
+				forceNewSession || options?.newSession
+					? SessionManager.create(workspace, sessionDir)
+					: SessionManager.continueRecent(workspace, sessionDir),
 			...(model ? { model } : {}),
 			...(config.pi?.thinking
 				? { thinkingLevel: config.pi.thinking }
@@ -259,16 +263,6 @@ export async function startCatty(options?: { newSession?: boolean }) {
 		})
 		return { session, modelFallbackMessage }
 	}
-
-	const { session, modelFallbackMessage } = await createPiSession()
-	if (modelFallbackMessage) console.log(`[pi] ${modelFallbackMessage}`)
-	console.log(
-		`[pi] main session: ${session.sessionFile ?? session.sessionId}`
-	)
-	if (channelSessions)
-		console.log(
-			"[pi] channelSessions enabled: Discord channels use separate pi sessions"
-		)
 
 	const createPiQueue = () => {
 		const piJobs: Array<{
@@ -318,46 +312,209 @@ export async function startCatty(options?: { newSession?: boolean }) {
 				else void runPiJobs()
 			})
 	}
-	const enqueuePi = createPiQueue()
-	let separateJobsRuntime:
-		| Promise<{
-				session: AgentSession
-				enqueuePi: ReturnType<typeof createPiQueue>
-		  }>
-		| undefined
+	type PiRuntime = {
+		label: string
+		session: AgentSession
+		enqueuePi: ReturnType<typeof createPiQueue>
+		restartSession: () => Promise<AgentSession>
+		promptSession: (
+			text: string,
+			promptOptions?: Parameters<AgentSession["prompt"]>[1]
+		) => Promise<void>
+	}
+	class AutoCompactionFailedError extends Error {
+		constructor(
+			readonly runtimeLabel: string,
+			readonly reason: string
+		) {
+			super(
+				`Catty restarted the ${runtimeLabel} pi session after auto-compaction failed: ${reason}`
+			)
+			this.name = "AutoCompactionFailedError"
+		}
+	}
+	const sendRestartDm = async (runtime: PiRuntime, reason: string) => {
+		const userIds = [...new Set(config.auth?.users ?? [])]
+		if (userIds.length === 0) {
+			console.log(
+				"[discord] no auth.users DM recipients configured for pi restart notice"
+			)
+			return
+		}
+		const content = `Catty restarted the ${runtime.label} pi session because auto-compaction failed. The interrupted request may need to be resent.\n\nReason: ${reason.slice(0, 1200)}`
+		const results = await Promise.allSettled(
+			userIds.map(async (userId) => {
+				const user = await client.fetchUser(userId, true)
+				await user.send(content)
+			})
+		)
+		for (const [index, result] of results.entries()) {
+			if (result.status === "rejected")
+				console.error(
+					"[discord] restart notice DM failed",
+					userIds[index],
+					result.reason
+				)
+		}
+	}
+	const createPiRuntime = ({
+		label,
+		session,
+		restartSession,
+		enqueuePi = createPiQueue()
+	}: {
+		label: string
+		session: AgentSession
+		restartSession: () => Promise<AgentSession>
+		enqueuePi?: ReturnType<typeof createPiQueue>
+	}) => {
+		const runtime: PiRuntime = {
+			label,
+			session,
+			enqueuePi,
+			restartSession,
+			promptSession: async (text, promptOptions) => {
+				let compactionFailure = ""
+				let contextOverflow = ""
+				let overflowCompacted = false
+				let promptError: unknown
+				const activeSession = runtime.session
+				const unsubscribe = activeSession.subscribe((event) => {
+					if (event.type === "agent_end") {
+						const assistant = event.messages
+							.filter(
+								(message) =>
+									message &&
+									typeof message === "object" &&
+									"role" in message &&
+									message.role === "assistant"
+							)
+							.at(-1)
+						const errorMessage =
+							assistant &&
+							typeof assistant === "object" &&
+							"errorMessage" in assistant &&
+							typeof assistant.errorMessage === "string"
+								? assistant.errorMessage
+								: ""
+						if (
+							errorMessage &&
+							!/(rate limit|too many requests|Throttling)/i.test(
+								errorMessage
+							) &&
+							/prompt is too long|request_too_large|exceeds .*context|context[_ ]length[_ ]exceeded|too many tokens|token limit exceeded|input token count.*exceeds|maximum prompt length|reduce the length of the messages/i.test(
+								errorMessage
+							)
+						) {
+							contextOverflow = errorMessage
+						}
+						return
+					}
+					if (event.type !== "compaction_end") return
+					if (
+						event.reason === "overflow" &&
+						(event.result || event.aborted)
+					)
+						overflowCompacted = true
+					if (event.reason !== "manual" && event.errorMessage)
+						compactionFailure = event.errorMessage
+				})
+				try {
+					await activeSession.prompt(text, promptOptions)
+				} catch (error) {
+					promptError = error
+				} finally {
+					unsubscribe()
+				}
+				if (!compactionFailure && contextOverflow && !overflowCompacted)
+					compactionFailure = `Context overflow recovery did not compact: ${contextOverflow}`
+				if (compactionFailure) {
+					console.error(
+						`[pi:${runtime.label}] auto-compaction failed; restarting session`,
+						compactionFailure
+					)
+					const nextSession = await runtime.restartSession()
+					activeSession.dispose()
+					runtime.session = nextSession
+					console.log(
+						`[pi:${runtime.label}] restarted session: ${runtime.session.sessionFile ?? runtime.session.sessionId}`
+					)
+					await sendRestartDm(runtime, compactionFailure)
+					throw new AutoCompactionFailedError(
+						runtime.label,
+						compactionFailure
+					)
+				}
+				if (promptError) throw promptError
+			}
+		}
+		return runtime
+	}
+
+	const mainSession = await createPiSession()
+	if (mainSession.modelFallbackMessage)
+		console.log(`[pi] ${mainSession.modelFallbackMessage}`)
+	console.log(
+		`[pi] main session: ${mainSession.session.sessionFile ?? mainSession.session.sessionId}`
+	)
+	if (channelSessions)
+		console.log(
+			"[pi] channelSessions enabled: Discord channels use separate pi sessions"
+		)
+	const mainRuntime = createPiRuntime({
+		label: "main",
+		session: mainSession.session,
+		restartSession: async () => {
+			const { session, modelFallbackMessage } = await createPiSession(
+				undefined,
+				true
+			)
+			if (modelFallbackMessage)
+				console.log(`[pi] ${modelFallbackMessage}`)
+			return session
+		}
+	})
+	const createSeparateJobsSession = () =>
+		createAgentSession({
+			cwd: workspace,
+			agentDir,
+			modelRuntime,
+			resourceLoader,
+			settingsManager,
+			customTools,
+			sessionManager: SessionManager.inMemory(workspace),
+			...(model ? { model } : {}),
+			...(config.pi?.thinking
+				? { thinkingLevel: config.pi.thinking }
+				: {})
+		})
+	let separateJobsRuntime: Promise<PiRuntime> | undefined
 	const getSeparateJobsRuntime = () => {
 		separateJobsRuntime ??= (async () => {
-			const { session, modelFallbackMessage } = await createAgentSession({
-				cwd: workspace,
-				agentDir,
-				modelRuntime,
-				resourceLoader,
-				settingsManager,
-				customTools,
-				sessionManager: SessionManager.inMemory(workspace),
-				...(model ? { model } : {}),
-				...(config.pi?.thinking
-					? { thinkingLevel: config.pi.thinking }
-					: {})
-			})
+			const { session, modelFallbackMessage } =
+				await createSeparateJobsSession()
 			if (modelFallbackMessage)
 				console.log(`[jobs] ${modelFallbackMessage}`)
 			console.log(
 				`[jobs] separate session: ${session.sessionFile ?? session.sessionId}`
 			)
-			return { session, enqueuePi: createPiQueue() }
+			return createPiRuntime({
+				label: "jobs",
+				session,
+				restartSession: async () => {
+					const { session, modelFallbackMessage } =
+						await createSeparateJobsSession()
+					if (modelFallbackMessage)
+						console.log(`[jobs] ${modelFallbackMessage}`)
+					return session
+				}
+			})
 		})()
 		return separateJobsRuntime
 	}
-	const channelPiRuntimes = new Map<
-		string,
-		Promise<{
-			session: AgentSession
-			enqueuePi: ReturnType<typeof createPiQueue>
-		}>
-	>()
+	const channelPiRuntimes = new Map<string, Promise<PiRuntime>>()
 	const getChannelPiRuntime = (channelId: string) => {
-		if (!channelSessions) return Promise.resolve({ session, enqueuePi })
+		if (!channelSessions) return Promise.resolve(mainRuntime)
 		const existing = channelPiRuntimes.get(channelId)
 		if (existing) return existing
 		const created = (async () => {
@@ -373,29 +530,44 @@ export async function startCatty(options?: { newSession?: boolean }) {
 			console.log(
 				`[pi:${channelId}] session: ${session.sessionFile ?? session.sessionId}`
 			)
-			return { session, enqueuePi: createPiQueue() }
+			return createPiRuntime({
+				label: `channel ${channelId}`,
+				session,
+				restartSession: async () => {
+					const { session, modelFallbackMessage } =
+						await createPiSession(sessionDir, true)
+					if (modelFallbackMessage)
+						console.log(`[pi:${channelId}] ${modelFallbackMessage}`)
+					return session
+				}
+			})
 		})()
 		channelPiRuntimes.set(channelId, created)
 		return created
 	}
-	let voicePiRuntime:
-		| Promise<{
-				session: AgentSession
-				enqueuePi: ReturnType<typeof createPiQueue>
-		  }>
-		| undefined
+	let voicePiRuntime: Promise<PiRuntime> | undefined
 	const getVoicePiRuntime = () => {
-		if (!channelSessions) return Promise.resolve({ session, enqueuePi })
+		if (!channelSessions) return Promise.resolve(mainRuntime)
 		voicePiRuntime ??= (async () => {
-			const { session, modelFallbackMessage } = await createPiSession(
-				join(cattyWorkspaceDir, "voice-session")
-			)
+			const sessionDir = join(cattyWorkspaceDir, "voice-session")
+			const { session, modelFallbackMessage } =
+				await createPiSession(sessionDir)
 			if (modelFallbackMessage)
 				console.log(`[pi:voice] ${modelFallbackMessage}`)
 			console.log(
 				`[pi:voice] session: ${session.sessionFile ?? session.sessionId}`
 			)
-			return { session, enqueuePi: createPiQueue() }
+			return createPiRuntime({
+				label: "voice",
+				session,
+				restartSession: async () => {
+					const { session, modelFallbackMessage } =
+						await createPiSession(sessionDir, true)
+					if (modelFallbackMessage)
+						console.log(`[pi:voice] ${modelFallbackMessage}`)
+					return session
+				}
+			})
 		})()
 		return voicePiRuntime
 	}
@@ -536,16 +708,16 @@ ${content}
 			console.log("[pi] prompt queued for /catty", interaction.rawData.id)
 			console.log(`[pi] exact prompt:\n---\n${piPrompt}\n---`)
 
-			const job = enqueuePi(async () => {
+			const job = mainRuntime.enqueuePi(async () => {
 				console.log("[pi] prompt started", interaction.rawData.id)
 				let text = ""
-				const unsubscribe = session.subscribe((event) => {
+				const unsubscribe = mainRuntime.session.subscribe((event) => {
 					if (event.type === "agent_end")
 						text = finalAssistantText(event.messages)
 				})
 
 				try {
-					await session.prompt(piPrompt)
+					await mainRuntime.promptSession(piPrompt)
 				} finally {
 					unsubscribe()
 				}
@@ -585,7 +757,9 @@ ${content}
 					error
 				)
 				await interaction.reply(
-					"Catty hit an error. Check service logs."
+					error instanceof AutoCompactionFailedError
+						? "Catty restarted its pi session after auto-compaction failed. Please resend your message."
+						: "Catty hit an error. Check service logs."
 				)
 			})
 		}
@@ -867,7 +1041,7 @@ ${content || "[no text content]"}
 				})
 
 				try {
-					await runtime.session.prompt(
+					await runtime.promptSession(
 						piPrompt,
 						images.length > 0 ? { images } : undefined
 					)
@@ -939,7 +1113,9 @@ ${content || "[no text content]"}
 				console.error("[pi] error for message", data.message.id, error)
 				stopTyping()
 				await data.message.reply(
-					"Catty hit an error. Check service logs."
+					error instanceof AutoCompactionFailedError
+						? "Catty restarted its pi session after auto-compaction failed. Please resend your message."
+						: "Catty hit an error. Check service logs."
 				)
 			})
 		}
@@ -1002,7 +1178,7 @@ ${content || "[no text content]"}
 		pollSeconds: config.jobs?.pollSeconds,
 		getRuntime: (mode) =>
 			mode === "main"
-				? Promise.resolve({ session, enqueuePi })
+				? Promise.resolve(mainRuntime)
 				: getSeparateJobsRuntime()
 	})
 
@@ -1019,7 +1195,7 @@ ${content || "[no text content]"}
 			if (voicePiRuntime) (await voicePiRuntime).session.dispose()
 			if (separateJobsRuntime)
 				(await separateJobsRuntime).session.dispose()
-			session.dispose()
+			mainRuntime.session.dispose()
 			web?.dispose()
 			server.stop()
 			process.exit(0)
