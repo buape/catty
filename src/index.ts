@@ -307,16 +307,23 @@ const runService = async (action: string) => {
 		if (action === "stop")
 			await run(["launchctl", "bootout", serviceTarget()])
 		if (action === "restart") {
-			await run(["launchctl", "bootout", serviceTarget()]).catch(() => {})
 			if (wantsNewSession)
 				await run(["launchctl", "setenv", newSessionEnv, "1"])
 			try {
-				await run([
-					"launchctl",
-					"bootstrap",
-					`gui/${userInfo().uid}`,
-					serviceFile()
-				])
+				const service = Bun.spawn(
+					["launchctl", "print", serviceTarget()],
+					{
+						stdout: "ignore",
+						stderr: "ignore"
+					}
+				)
+				if ((await service.exited) !== 0)
+					await run([
+						"launchctl",
+						"bootstrap",
+						`gui/${userInfo().uid}`,
+						serviceFile()
+					])
 				await run(["launchctl", "kickstart", "-k", serviceTarget()])
 			} finally {
 				if (wantsNewSession)
