@@ -140,16 +140,17 @@ Primary expected providers:
 Catty wraps pi's OAuth storage so users do not need to open pi.
 
 ```bash
-catty auth login
+catty auth
+# or: catty login
 ```
 
 From source:
 
 ```bash
-bun run start -- auth login
+bun run start -- auth
 ```
 
-This uses OpenAI Codex device-code login. Catty prints a URL and code, waits for completion, and stores the OAuth credential in `~/.pi/agent/auth.json` by default.
+This uses OpenAI Codex device-code login. Catty opens the browser when it can, prints the code, waits for completion, and stores the OAuth credential in `~/.pi/agent/auth.json` by default. Use `catty auth status` to check login state and `catty auth logout` to remove it.
 
 Catty will use that credential when either:
 
@@ -161,7 +162,7 @@ model = "gpt-5.5"
 
 or when pi's normal settings select that provider/model.
 
-For launchd/systemd, run `catty auth login` as the same OS user that runs Catty. If you use a custom auth dir, set `pi.agentDir` in `~/.catty/config.toml` to that same pi agent dir.
+For launchd/systemd, run `catty auth` as the same OS user that runs Catty. If you use a custom auth dir, set `pi.agentDir` in `~/.catty/config.toml` to that same pi agent dir.
 
 ## Auth
 

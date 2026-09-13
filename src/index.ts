@@ -8,7 +8,7 @@ import {
 import { homedir, platform, userInfo } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth"
-import { getAgentDir, ModelRuntime } from "@earendil-works/pi-coding-agent"
+import { isCattyAuthCommand, runCattyAuth } from "./auth"
 
 registerBunOAuthFlows()
 
@@ -39,7 +39,10 @@ const printHelp = () => {
 
 Usage:
   catty [--new] [--name NAME] [--config PATH] Start Catty in the foreground
-  catty auth login [provider]   Login to pi auth provider
+  catty auth [login] [provider] Login to ChatGPT/Codex OAuth (default)
+  catty auth status [provider]  Show auth status
+  catty auth logout [provider]  Remove stored auth
+  catty login [provider]        Alias for catty auth login
   catty preview [agent] [channel-id]
                               Resume the main or channel pi session in the pi TUI
   catty service install         Install the user service
@@ -172,6 +175,11 @@ if (command === "preview") {
 	process.exit(0)
 }
 
+if (isCattyAuthCommand(command)) {
+	await runCattyAuth(args, command, cattyDir, namedAgents, hasRootAgent)
+	process.exit(0)
+}
+
 if (
 	usingDefaultConfig &&
 	!usingNamedAgent &&
@@ -185,13 +193,9 @@ if (
 	process.exit(0)
 }
 
-const { agentName, config, configPath, workspace } = await import("./config")
+const { agentName, configPath, workspace } = await import("./config")
 const { startCatty } = await import("./agent")
 
-const agentDir = String(config.pi?.agentDir ?? getAgentDir()).replace(
-	/^~(?=$|\/)/,
-	homedir()
-)
 const serviceName = agentName ?? "agent"
 const serviceLabel = `com.catty.${serviceName}`
 const systemdService = agentName
@@ -413,48 +417,6 @@ if (!command) {
 	await startCatty({ newSession: wantsNewSession })
 } else if (command === "help") {
 	printHelp()
-} else if (command === "auth" && args[args.indexOf("auth") + 1] === "login") {
-	const provider = args[args.indexOf("auth") + 2] ?? "openai-codex"
-	if (provider !== "openai-codex")
-		throw new Error(
-			`Only openai-codex OAuth is wired right now: ${provider}`
-		)
-
-	const modelRuntime = await ModelRuntime.create({
-		authPath: join(agentDir, "auth.json"),
-		modelsPath: join(agentDir, "models.json")
-	})
-	for (const [provider, key] of Object.entries(config.pi?.apiKeys ?? {})) {
-		if (typeof key === "string")
-			await modelRuntime.setRuntimeApiKey(provider, key)
-	}
-
-	await modelRuntime.login(provider, "oauth", {
-		prompt: async (prompt) => {
-			if (prompt.type === "select")
-				return (
-					prompt.options.find((option) => option.id === "device_code")
-						?.id ??
-					prompt.options[0]?.id ??
-					""
-				)
-			console.log(prompt.message)
-			for await (const chunk of Bun.stdin.stream())
-				return new TextDecoder().decode(chunk).trim()
-			return ""
-		},
-		notify: (event) => {
-			if (event.type === "device_code") {
-				console.log(`Open ${event.verificationUri}`)
-				console.log(`Enter code: ${event.userCode}`)
-				console.log("Waiting for login to finish...")
-			} else if (event.type === "auth_url") {
-				console.log(event.instructions ?? "Open this URL to continue:")
-				console.log(event.url)
-			} else console.log(event.message)
-		}
-	})
-	console.log(`Logged in: ${provider}`)
 } else if (command === "service") {
 	const action = args[args.indexOf("service") + 1]
 	if (action === "install") await installService()

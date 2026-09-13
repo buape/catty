@@ -40,16 +40,17 @@ Full config reference: [`docs/config.md`](docs/config.md)
 Catty wraps pi's ChatGPT/Codex OAuth flow, so users do not need to open pi directly.
 
 ```bash
-catty auth login
+catty auth
+# or: catty login
 ```
 
-Follow the printed device-code instructions. Credentials are stored in pi's normal auth store, usually:
+Catty opens the browser when it can, then prints the device code. Credentials are stored in pi's normal auth store, usually:
 
 ```text
 ~/.pi/agent/auth.json
 ```
 
-For launchd/systemd, run `catty auth login` as the same OS user that runs the service.
+Use `catty auth status` to check login state and `catty auth logout` to remove it. For launchd/systemd, run `catty auth` as the same OS user that runs the service.
 
 ## Run
 
