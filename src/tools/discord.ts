@@ -1,5 +1,6 @@
 import { type Client, Routes } from "@buape/carbon"
 import { type Static, Type } from "typebox"
+import { splitDiscordContent } from "../discord-message"
 import { Tool } from "./tool"
 
 const commonSchema = Type.Object({
@@ -807,8 +808,9 @@ class SendMessageAction extends DiscordAction {
 			)
 		}
 
+		const chunks = content ? splitDiscordContent(content) : [""]
 		const payload: Record<string, unknown> = {}
-		if (content) payload.content = content
+		if (content) payload.content = chunks[0]
 
 		if (filePath) {
 			const fileBuffer = await import("node:fs/promises").then((fs) =>
@@ -822,9 +824,17 @@ class SendMessageAction extends DiscordAction {
 			]
 		}
 
-		return this.client.rest.post(Routes.channelMessages(channelId), {
-			body: payload
-		})
+		const result = await this.client.rest.post(
+			Routes.channelMessages(channelId),
+			{
+				body: payload
+			}
+		)
+		for (const chunk of chunks.slice(1))
+			await this.client.rest.post(Routes.channelMessages(channelId), {
+				body: { content: chunk }
+			})
+		return result
 	}
 }
 

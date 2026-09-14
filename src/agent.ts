@@ -33,6 +33,7 @@ import {
 	readPostMigrationPrompts,
 	workspace
 } from "./config"
+import { splitDiscordContent } from "./discord-message"
 import { createJobsController, migrateHeartbeatToJob } from "./jobs"
 import { createReactionListeners } from "./listeners/reactions"
 import { cattySystemPrompt } from "./prompt"
@@ -740,14 +741,17 @@ ${content}
 							imagePaths.push(p1.trim())
 							return ""
 						})
-						.trim()
-						.slice(0, 1900) || "No text response."
+						.trim() || "No text response."
 
-				await interaction.reply(
-					response === "NO_REPLY"
-						? "Catty chose not to reply."
-						: cleanText
-				)
+				if (response === "NO_REPLY") {
+					await interaction.reply("Catty chose not to reply.")
+					return
+				}
+
+				const chunks = splitDiscordContent(cleanText)
+				await interaction.reply(chunks[0])
+				for (const chunk of chunks.slice(1))
+					await interaction.followUp(chunk)
 			})
 
 			await job.catch(async (error) => {
@@ -1077,8 +1081,7 @@ ${content || "[no text content]"}
 							imagePaths.push(p1.trim())
 							return ""
 						})
-						.trim()
-						.slice(0, 1900) || "No text response."
+						.trim() || "No text response."
 
 				const files: { name: string; data: Blob }[] = []
 				for (const imgPath of imagePaths) {
@@ -1099,13 +1102,18 @@ ${content || "[no text content]"}
 					}
 				}
 
+				const chunks = splitDiscordContent(cleanText)
 				const channel = await data.message.fetchChannel()
 				const payload =
-					files.length > 0 ? { content: cleanText, files } : cleanText
+					files.length > 0 ? { content: chunks[0], files } : chunks[0]
 				if (!channel?.isSendable()) {
-					data.message.reply(payload)
+					await data.message.reply(payload)
+					for (const chunk of chunks.slice(1))
+						await data.message.reply(chunk)
 				} else {
-					channel.send(payload)
+					await channel.send(payload)
+					for (const chunk of chunks.slice(1))
+						await channel.send(chunk)
 				}
 			})
 
