@@ -1,6 +1,10 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
-import type { QMDStore } from "@tobilu/qmd"
+import {
+	addLineNumbers,
+	createStore,
+	type QMDStore
+} from "@tobilu/qmd"
 import { type Static, Type } from "typebox"
 import { Tool } from "./tool"
 
@@ -43,8 +47,6 @@ const memorySchema = Type.Union([
 
 type MemoryParams = Static<typeof memorySchema>
 
-const qmdPackage = "@tobilu/qmd"
-
 class MemoryTool extends Tool<typeof memorySchema> {
 	name = "memory"
 	label = "QMD Memory"
@@ -66,7 +68,6 @@ class MemoryTool extends Tool<typeof memorySchema> {
 		if (this.store) return this.store
 		const dbPath = join(this.workspace, ".internal", "qmd.sqlite")
 		mkdirSync(dirname(dbPath), { recursive: true })
-		const { createStore } = await import(qmdPackage)
 		this.store = await createStore({
 			dbPath,
 			config: {
@@ -206,7 +207,6 @@ class MemoryTool extends Tool<typeof memorySchema> {
 			maxLines: params.maxLines
 		})
 		if (body === null) return this.text({ error: "Document not found" })
-		const { addLineNumbers } = await import(qmdPackage)
 		return this.text(addLineNumbers(body, fromLine))
 	}
 
