@@ -12,7 +12,7 @@ import { homedir } from "node:os"
 import { dirname, extname, join, relative, resolve } from "node:path"
 import templateConfig from "../docs/templates/config.toml" with { type: "text" }
 
-const configVersion = 6
+const configVersion = 7
 
 const cattyDir = join(homedir(), ".catty")
 const nameArgIndex = Bun.argv.indexOf("--name")
@@ -164,6 +164,23 @@ const migrations: Record<number, (text: string) => string> = {
 			'# oneOffCleanup = "delete" # or "archive" to move into jobs/_archive'
 		)
 		return lines.join("\n")
+	},
+	7: (text) => {
+		if (/^\s*\[dmLogs\]\s*$/m.test(text)) return text
+		const block = `# Direct message logging.
+[dmLogs]
+# Discord channel ID that receives allowed DM logs. Omit to disable.
+# channelId = "log-channel-id"
+# User IDs or DM channel IDs to skip, e.g. your own Discord user ID.
+# ignoredIds = ["user-id-or-dm-channel-id"]
+`
+		const marker = "\n# Workspace job scheduler."
+		if (text.includes(marker))
+			return text.replace(marker, `\n${block}${marker}`)
+		const versionMarker = "\n# DO NOT CHANGE THIS VALUE\n"
+		if (text.includes(versionMarker))
+			return text.replace(versionMarker, `\n${block}${versionMarker}`)
+		return `${text.trimEnd()}\n\n${block}`
 	}
 }
 
@@ -232,6 +249,10 @@ export const config = Bun.TOML.parse(configText) as {
 		pollSeconds?: number
 		maxOutputBytes?: number
 		oneOffCleanup?: "delete" | "archive"
+	}
+	dmLogs?: {
+		channelId?: string
+		ignoredIds?: string[]
 	}
 	heartbeat?: {
 		enabled?: boolean

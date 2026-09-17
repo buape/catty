@@ -76,6 +76,12 @@ verbose = false
 # [responses.guilds."guild-id".channels."channel-id"]
 # mode = "mention-or-reply"
 
+[dmLogs]
+# Discord channel ID that receives allowed DM logs. Omit to disable.
+# channelId = "log-channel-id"
+# User IDs or DM channel IDs to skip, e.g. your own Discord user ID.
+# ignoredIds = ["user-id-or-dm-channel-id"]
+
 [jobs]
 # Discover and run workspace jobs from workspace/jobs/<job-id>/. Default: true.
 # enabled = true
@@ -87,7 +93,7 @@ verbose = false
 # oneOffCleanup = "delete" # or "archive" to move into jobs/_archive
 
 # DO NOT CHANGE THIS VALUE
-version = 6
+version = 7
 ```
 
 ## Required fields
@@ -205,6 +211,18 @@ Guild response mode precedence is:
 5. `all`
 
 In `mention-or-reply` mode, direct mention pings include the previous 10 channel messages as untrusted context when the previous channel message was not from Catty.
+
+## DM logs
+
+Set `dmLogs.channelId` to copy allowed DM exchanges into a Discord channel.
+
+```toml
+[dmLogs]
+channelId = "log-channel-id"
+ignoredIds = ["your-user-id"]
+```
+
+Only DMs are logged. Guild messages are not logged here. `ignoredIds` may contain user IDs or DM channel IDs; matching DM exchanges are skipped entirely, including Catty's replies.
 
 ## Channel sessions
 

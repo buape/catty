@@ -637,6 +637,37 @@ export async function startCatty(options?: { newSession?: boolean }) {
 		return guildPrincipalAllowed && channelPrincipalAllowed
 	}
 
+	const shouldLogDm = (
+		guildId: string | undefined,
+		channelId: string,
+		userId: string
+	) => {
+		const ignoredIds = config.dmLogs?.ignoredIds ?? []
+		return (
+			!guildId &&
+			!!config.dmLogs?.channelId &&
+			!ignoredIds.includes(userId) &&
+			!ignoredIds.includes(channelId)
+		)
+	}
+
+	const sendDmLog = async (content: string) => {
+		const channelId = config.dmLogs?.channelId
+		if (!channelId) return
+		try {
+			for (const chunk of splitDiscordContent(content)) {
+				await client.rest.post(Routes.channelMessages(channelId), {
+					body: {
+						content: chunk,
+						allowed_mentions: { parse: [] }
+					}
+				})
+			}
+		} catch (error) {
+			console.error("[discord] DM log send failed", error)
+		}
+	}
+
 	class CattyCommand extends Command {
 		name = "catty"
 		description = "Send a message to Catty"
@@ -697,6 +728,12 @@ export async function startCatty(options?: { newSession?: boolean }) {
 				return
 			}
 
+			const logDm = shouldLogDm(guildId, channelId, userId)
+			if (logDm)
+				await sendDmLog(
+					`**DM /catty received**\nFrom: ${user?.username ?? "unknown"} (${userId})\nDM channel: ${channelId}\nInteraction: ${interaction.rawData.id}\n\n${content}`
+				)
+
 			await interaction.defer()
 
 			const boundary = interaction.rawData.id
@@ -745,6 +782,10 @@ ${content}
 
 				if (response === "NO_REPLY") {
 					await interaction.reply("Catty chose not to reply.")
+					if (logDm)
+						await sendDmLog(
+							`**Catty DM response**\nTo: ${user?.username ?? "unknown"} (${userId})\nDM channel: ${channelId}\nInteraction: ${interaction.rawData.id}\n\n[NO_REPLY]`
+						)
 					return
 				}
 
@@ -752,6 +793,10 @@ ${content}
 				await interaction.reply(chunks[0])
 				for (const chunk of chunks.slice(1))
 					await interaction.followUp(chunk)
+				if (logDm)
+					await sendDmLog(
+						`**Catty DM response**\nTo: ${user?.username ?? "unknown"} (${userId})\nDM channel: ${channelId}\nInteraction: ${interaction.rawData.id}\n\n${cleanText}`
+					)
 			})
 
 			await job.catch(async (error) => {
@@ -760,11 +805,15 @@ ${content}
 					interaction.rawData.id,
 					error
 				)
-				await interaction.reply(
+				const response =
 					error instanceof AutoCompactionFailedError
 						? "Catty restarted its pi session after auto-compaction failed. Please resend your message."
 						: "Catty hit an error. Check service logs."
-				)
+				await interaction.reply(response)
+				if (logDm)
+					await sendDmLog(
+						`**Catty DM response**\nTo: ${user?.username ?? "unknown"} (${userId})\nDM channel: ${channelId}\nInteraction: ${interaction.rawData.id}\n\n${response}`
+					)
 			})
 		}
 	}
@@ -906,6 +955,25 @@ ${content}
 				console.log("[discord] ignored empty content", data.message.id)
 				return
 			}
+
+			const logDm = shouldLogDm(
+				guildId,
+				data.message.channelId,
+				data.author.id
+			)
+			if (logDm)
+				await sendDmLog(
+					`**DM received**\nFrom: ${data.author.username ?? "unknown"} (${data.author.id})\nDM channel: ${data.message.channelId}\nMessage: ${data.message.id}\n\n${content || "[no text content]"}${
+						attachments.length
+							? `\n\nAttachments:\n${attachments
+									.map(
+										(attachment) =>
+											`- ${attachment.filename ?? attachment.id}: ${attachment.url}`
+									)
+									.join("\n")}`
+							: ""
+					}`
+				)
 
 			let stopTyping = () => {}
 			const startTyping = () => {
@@ -1069,6 +1137,10 @@ ${content || "[no text content]"}
 						"[discord] suppressed NO_REPLY",
 						data.message.id
 					)
+					if (logDm)
+						await sendDmLog(
+							`**Catty DM response**\nTo: ${data.author.username ?? "unknown"} (${data.author.id})\nDM channel: ${data.message.channelId}\nMessage: ${data.message.id}\n\n[NO_REPLY]`
+						)
 					return
 				}
 
@@ -1115,16 +1187,28 @@ ${content || "[no text content]"}
 					for (const chunk of chunks.slice(1))
 						await channel.send(chunk)
 				}
+				if (logDm)
+					await sendDmLog(
+						`**Catty DM response**\nTo: ${data.author.username ?? "unknown"} (${data.author.id})\nDM channel: ${data.message.channelId}\nMessage: ${data.message.id}\n\n${cleanText}${
+							imagePaths.length
+								? `\n\nFiles:\n${imagePaths.map((path) => `- ${path}`).join("\n")}`
+								: ""
+						}`
+					)
 			})
 
 			await job.catch(async (error) => {
 				console.error("[pi] error for message", data.message.id, error)
 				stopTyping()
-				await data.message.reply(
+				const response =
 					error instanceof AutoCompactionFailedError
 						? "Catty restarted its pi session after auto-compaction failed. Please resend your message."
 						: "Catty hit an error. Check service logs."
-				)
+				await data.message.reply(response)
+				if (logDm)
+					await sendDmLog(
+						`**Catty DM response**\nTo: ${data.author.username ?? "unknown"} (${data.author.id})\nDM channel: ${data.message.channelId}\nMessage: ${data.message.id}\n\n${response}`
+					)
 			})
 		}
 	}

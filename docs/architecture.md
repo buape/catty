@@ -41,7 +41,7 @@ Maintenance prompts are deliberate exceptions so they do not pollute resumed Dis
 
 The example config is written automatically on first launch, along with `AGENTS.md`, `.gitignore`, and the canonical workspace `MEMORY.qmd`. Catty exits immediately so the user can fill them out before the first real run.
 
-Config contains a `version = 6` schema marker. `src/config.ts` has a hardcoded config version and a simple text migration table. If the code version increases, migrations run before TOML parsing and update the version line.
+Config contains a `version = 7` schema marker. `src/config.ts` has a hardcoded config version and a simple text migration table. If the code version increases, migrations run before TOML parsing and update the version line.
 
 Full config reference lives in `docs/config.md`.
 

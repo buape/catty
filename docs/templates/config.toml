@@ -72,6 +72,13 @@ verbose = false
 # [responses.guilds."guild-id".channels."channel-id"]
 # mode = "mention-or-reply"
 
+# Direct message logging.
+[dmLogs]
+# Discord channel ID that receives allowed DM logs. Omit to disable.
+# channelId = "log-channel-id"
+# User IDs or DM channel IDs to skip, e.g. your own Discord user ID.
+# ignoredIds = ["user-id-or-dm-channel-id"]
+
 # Workspace job scheduler. Jobs live under workspace/jobs/<job-id>/.
 [jobs]
 # Discover and run workspace jobs. Default: true.
@@ -100,4 +107,4 @@ verbose = false
 # voice = "alloy"
 
 # DO NOT CHANGE THIS VALUE
-version = 6
+version = 7
