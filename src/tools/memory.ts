@@ -1,10 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
-import {
-	addLineNumbers,
-	createStore,
-	type QMDStore
-} from "@tobilu/qmd"
+import { addLineNumbers, createStore, type QMDStore } from "@tobilu/qmd"
 import { type Static, Type } from "typebox"
 import { Tool } from "./tool"
 
