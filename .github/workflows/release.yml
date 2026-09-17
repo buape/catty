@@ -30,9 +30,7 @@ jobs:
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
 
-          bun build src/index.ts --compile --target bun-darwin-arm64 --outfile dist/catty-darwin-arm64
-          bun build src/index.ts --compile --target bun-darwin-x64 --outfile dist/catty-darwin-x64
-          bun build src/index.ts --compile --target bun-linux-x64 --outfile dist/catty-linux-x64
+          bun run release
 
           mkdir -p release
           mkdir -p "release/catty-${VERSION}-darwin-arm64"
