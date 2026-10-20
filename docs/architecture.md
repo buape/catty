@@ -13,7 +13,7 @@ Catty is the project/harness. The running assistant is an agent inside Catty; du
 5. Register the QMD-backed memory tool and run queued post-migration prompts in a separate in-memory pi side session.
 6. Reload workspace resources after successful post-migration prompts.
 7. Create the main pi `AgentSession` for the configured workspace, resuming the latest session unless `--new` is passed.
-8. Register custom Discord, QMD-backed memory, and Catty jobs tools.
+8. Register custom Discord, QMD-backed memory, Catty jobs, and runtime-info tools.
 9. If `[pi].channelSessions = true`, lazily create one persistent pi session and queue per Discord channel as messages arrive.
 10. Start one Carbon `Client` with a `MessageCreateListener`.
 11. Carbon receives Discord `MESSAGE_CREATE` events through `GatewayPlugin`.

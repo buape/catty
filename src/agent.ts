@@ -52,6 +52,7 @@ import { createReactionListeners } from "./listeners/reactions"
 import { cattySystemPrompt } from "./prompt"
 import { createDiscordTool } from "./tools/discord"
 import { createMemoryTool } from "./tools/memory"
+import { createRuntimeInfoTool } from "./tools/runtime-info"
 import { createCattyWeb } from "./web"
 
 export async function startCatty(options?: { newSession?: boolean }) {
@@ -318,7 +319,8 @@ export async function startCatty(options?: { newSession?: boolean }) {
 	const customTools = [
 		discordTool,
 		memoryTool.definition,
-		jobs.toolDefinition
+		jobs.toolDefinition,
+		createRuntimeInfoTool()
 	]
 
 	const channelSessions = config.pi?.channelSessions === true
