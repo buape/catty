@@ -29,5 +29,6 @@ Repo files:
 End-user workspace files, created under `~/.catty/workspace` by default:
 
 - `AGENTS.md`: workspace guidance.
-- `MEMORY.qmd`: primary user context, agent name/personality, and durable memory.
+- `MEMORY.qmd`: bounded identity/preferences core and topic index.
+- `memory/`: searchable durable topic notes; `_archive/` excluded from default recall.
 - `skills/` and `.pi/extensions/`: reusable capabilities.

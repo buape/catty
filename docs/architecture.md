@@ -2,7 +2,7 @@
 
 KISS target: one Discord connector, one default pi session mode, one TOML config file.
 
-Catty is the project/harness. The running assistant is an agent inside Catty; durable memory, user context, name, and personality live in workspace `MEMORY.qmd`.
+Catty is the project/harness. The running assistant keeps identity and essential context in workspace `MEMORY.qmd`; detailed durable facts live in searchable `memory/` topic notes.
 
 ## Runtime flow
 
@@ -22,7 +22,7 @@ Catty is the project/harness. The running assistant is an agent inside Catty; du
 14. Listener checks the global user allowlist or nested guild/channel user-role overrides.
 15. Listener checks the channel response mode.
 16. Accepted message text and reply context are wrapped in untrusted begin/end blocks and sent to pi.
-17. Pi can use the `memory` tool to search/retrieve/update `MEMORY.qmd` through QMD.
+17. Pi receives a fresh bounded memory core each run and uses the `memory` tool to retrieve topic notes through QMD or perform version-checked writes/archival with recovery history.
 18. Pi can use the `jobs` tool to create/list/update/cancel/run scheduled jobs. During job runs, `prompt.md` directs deterministic scripts for the agent to run with normal tools.
 19. Discord typing is triggered while the queued pi prompt is waiting/running.
 20. Assistant text is collected from pi stream events.
@@ -51,7 +51,7 @@ Migrations that need semantic cleanup can call `queuePostMigrationPrompt(title, 
 
 On startup, after resources and the memory tool are available but before the main/resumed Discord session is created, Catty drains the queue in a separate `SessionManager.inMemory(workspace)` side session. If every prompt succeeds, Catty clears the queue and reloads workspace resources so the main session sees any file edits. If the side session fails, the queue remains for retry on the next launch.
 
-Memory migrations can use this to ask a side agent to read files staged under `_migrated/` and organize their durable facts into clean `MEMORY.qmd` content without condensation or information loss.
+Memory organization preserves staged sources under `_migrated/`, saves detailed facts in `memory/` topic notes, and keeps the core bounded. Active topic notes are not staged during startup.
 
 ## Jobs architecture
 
@@ -70,10 +70,13 @@ Legacy heartbeat migration is compatibility-only. If old `[heartbeat]` config is
 Catty's harness prompt is embedded in `src/prompt.ts`. End-user memory and resources live in the workspace:
 
 - `AGENTS.md`
-- `MEMORY.qmd`
+- `MEMORY.qmd` — bounded core, refreshed through native `before_agent_start` context-file sections
+- `memory/` — on-demand topic notes; `_archive/` excluded from recall
 - `jobs/`
 - `skills/`
 - `.pi/extensions/`
+
+Memory housekeeping uses the existing `memory-maintenance` job, installed once without overwriting workspace edits. Its deterministic hash check avoids model calls for unchanged notes. The prompt reviews changed files conservatively; version-checked writes and acknowledgements protect against concurrent tool edits. Memory-tool writes snapshot prior content under `.internal/memory-history/` and serialize QMD operations. These are not filesystem isolation or semantic-correctness guarantees. See `docs/memory.md`.
 
 ## pi integration
 

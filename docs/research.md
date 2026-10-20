@@ -27,7 +27,7 @@ Implementation notes:
 - Catty workspace skills live in `skills/`; directories containing `SKILL.md` are discovered recursively.
 - Catty workspace extensions live in `.pi/extensions/`.
 - The SDK supports a full system prompt override with `DefaultResourceLoader({ systemPromptOverride })`.
-- Pi's native project system prompt file is `.pi/SYSTEM.md`; Catty instead embeds its harness prompt in code and passes that through `systemPromptOverride`, while workspace rules come from `AGENTS.md` and durable user/agent memory comes from `MEMORY.qmd` loaded through `agentsFilesOverride`.
+- Pi's native project system prompt file is `.pi/SYSTEM.md`; Catty instead embeds its harness prompt in code and passes that through `systemPromptOverride`, while workspace rules come from `AGENTS.md`. The bounded `MEMORY.qmd` core is loaded through `agentsFilesOverride` and refreshed through native `before_agent_start` context-file sections; detailed `memory/` notes are retrieved on demand.
 - `session.prompt()` sends input and waits for the full agent run. If the session is already streaming, use `steer`, `followUp`, or `prompt(..., { streamingBehavior })`.
 - Subscribe to `message_update` text deltas and accumulate assistant text for Discord replies.
 

@@ -290,14 +290,19 @@ Legacy `[heartbeat]` config is no longer the runtime scheduler. On startup, if `
 
 ## Memory
 
-Catty always uses one canonical memory file:
+Memory paths are fixed relative to the configured workspace:
 
-```text
-~/.catty/workspace/MEMORY.qmd
-```
+- `MEMORY.qmd`: identity, essential preferences, and a short topic index. Memory-tool writes are limited to 12,000 characters. Each pi run receives a fresh core; oversized files stay intact on disk and load only a bounded preview with a warning.
+- `memory/**/*.md` and `memory/**/*.qmd`: detailed topic notes retrieved on demand through QMD.
+- `memory/_archive/`: explicitly obsolete notes, excluded from default recall.
+- `.internal/qmd.sqlite`: rebuildable index.
+- `.internal/memory-history/`: local recovery snapshots from memory-tool writes.
+- `.internal/memory-reviewed.json`: acknowledged file hashes for housekeeping.
 
-Catty creates it automatically as an empty file when missing and loads it into pi as a native context file. There is no memory-path setting. Durable user context, preferences, reusable notes, and agent personality belong in `MEMORY.qmd`; workspace operating rules belong in `AGENTS.md`.
+There is no memory-path setting or remote synchronization. Workspace operating rules belong in `AGENTS.md`. The memory tool supports search/query/get, direct read, version-checked write/archive, append, status/reviewed, index update, and embedding.
 
-Catty also exposes a built-in `memory` tool backed by QMD (`@tobilu/qmd`). The tool indexes `MEMORY.qmd` into workspace `.internal/qmd.sqlite`, updates the QMD index before recall, and supports search, hybrid query, get, append, update, status, and embed actions. Catty predownloads the QMD query-expansion and embedding models at startup so the first Discord memory query does not block on model downloads.
+Catty installs the workspace-owned `jobs/memory-maintenance` job once: a 24-hour interval with a deterministic changed-files check. It skips model calls when nothing changed. Set `enabled = false` in that job's `meta.toml` to disable it, or disable all jobs with `[jobs].enabled = false`. Existing job folders and subsequent user edits/deletion are preserved.
 
-On upgrade, Catty may stage root workspace Markdown files and migration artifacts under `_migrated/`, then queue a post-migration agent prompt in `.internal/post-migration-prompts.jsonl`. On the next startup phase Catty runs that prompt in a separate in-memory side session so durable memory is organized into clean `MEMORY.qmd` content without condensation or information loss.
+Source artifacts under `_migrated/` remain preserved. Post-migration prompts organize their details into topic notes while keeping only essentials and links in the core.
+
+See [`memory.md`](memory.md) for the full lifecycle, tool contract, privacy boundaries, recovery, and verification.

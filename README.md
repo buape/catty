@@ -2,7 +2,7 @@
 
 KISS personal assistant agent harness for Discord.
 
-Catty is the project/harness. The actual durable memory, agent name, and personality live in the end-user workspace `MEMORY.qmd`.
+Catty is the project/harness. The end-user workspace keeps agent identity and essential context in `MEMORY.qmd`, with detailed durable memory in searchable `memory/` topic notes.
 
 ## Install
 
@@ -89,10 +89,11 @@ catty --new
 Created under `~/.catty/workspace` by default:
 
 - `AGENTS.md` — workspace operating rules.
-- `MEMORY.qmd` — durable user context, preferences, reusable notes, agent name, and personality; indexed by QMD for memory search/retrieval.
+- `MEMORY.qmd` — small, always-loaded identity/preferences core and topic index (12,000-character write limit).
+- `memory/` — QMD-indexed topic notes; `memory/_archive/` is excluded from default recall.
 - `.gitignore` — ignores Catty internal workspace state.
-- Migration artifacts may be staged under `_migrated/`; post-migration side sessions organize durable content into `MEMORY.qmd` without condensing it.
-- `jobs/` — Catty scheduled jobs. Each job lives in `jobs/<job-id>/` with `prompt.md`, `meta.toml`, and optional deterministic scripts.
+- `_migrated/` — preserved source artifacts; durable details belong in topic notes, with essentials and links in the core.
+- `jobs/` — Catty scheduled jobs. Each job lives in `jobs/<job-id>/` with `prompt.md`, `meta.toml`, and optional deterministic scripts. The workspace-owned `memory-maintenance` job reviews changed notes daily and can be disabled.
 - `skills/` — pi skills.
 - `.pi/extensions/` — pi extensions.
 
@@ -111,7 +112,7 @@ See `docs/jobs.md` for the scheduled job folder contract, deterministic script c
 - Verbose logs show received Discord messages, the exact prompt sent to pi, pi status/events, and final responses.
 - Catty discovers scheduled jobs from `workspace/jobs/<job-id>/meta.toml`. Jobs support cron, interval, and one-off schedules; deterministic checks can skip pi entirely when there is no work; context scripts feed stable input into the prompt; `prompt.md` directs agent-run job scripts through normal tools. One-off job folders are deleted after a run by default, or archived under `jobs/_archive/` with `jobs.oneOffCleanup = "archive"`.
 - Legacy `[heartbeat]` config is migrated once into a normal `jobs/heartbeat/` folder while preserving `HEARTBEAT.md`.
-- The built-in `memory` tool uses QMD to update/search/get/append/embed `MEMORY.qmd`; its local SQLite index lives at `.internal/qmd.sqlite` inside the workspace. Job runtime state lives at `.internal/jobs.sqlite`. QMD query-expansion and embedding models are predownloaded at startup.
+- The built-in `memory` tool searches the core and topic notes through QMD, provides version-checked read/write/archive operations with local recovery history, and tracks notes needing review. Its index lives at `.internal/qmd.sqlite`; job state lives at `.internal/jobs.sqlite`. QMD models are predownloaded at startup. See [`docs/memory.md`](docs/memory.md) for limits, maintenance, privacy boundaries, and recovery.
 
 ## Services
 

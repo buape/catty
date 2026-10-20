@@ -18,6 +18,10 @@ Catty jobs are workspace-owned scheduled prompts. They replace the old special h
 - `scripts/` is conventional. Catty runs check/context scripts from `meta.toml` before the agent. Once the agent is running, it may use normal agent tools to run arbitrary commands; deterministic script instructions belong in `prompt.md`, not `meta.toml`.
 - Runtime state never goes in the job folder. Catty stores runtime facts in `.internal/jobs.sqlite`.
 
+## Memory housekeeping
+
+Catty installs a workspace-owned `memory-maintenance` job once. It checks for changed active memory notes every 24 hours, skips the model when reviewed hashes match, and uses the shared separate jobs session for conservative cleanup. Disable it in its `meta.toml`; Catty preserves edits and deletion. No additional scheduler or dedicated agent framework is involved. See [`memory.md`](memory.md) for the lifecycle and recovery contract.
+
 ## Minimal recurring job
 
 ```toml

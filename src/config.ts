@@ -11,6 +11,15 @@ import {
 import { homedir } from "node:os"
 import { dirname, extname, join, relative, resolve } from "node:path"
 import templateConfig from "../docs/templates/config.toml" with { type: "text" }
+import memoryMaintenanceMeta from "../docs/templates/jobs/memory-maintenance/meta.toml" with {
+	type: "text"
+}
+import memoryMaintenancePrompt from "../docs/templates/jobs/memory-maintenance/prompt.md" with {
+	type: "text"
+}
+import memoryMaintenanceCheck from "../docs/templates/jobs/memory-maintenance/scripts/check.ts.txt" with {
+	type: "text"
+}
 
 const configVersion = 7
 
@@ -369,6 +378,25 @@ export const clearPostMigrationPrompts = () => {
 if (!existsSync(memoryPath)) {
 	writeFileSync(memoryPath, "")
 }
+mkdirSync(join(workspace, "memory"), { recursive: true })
+
+// Install once; workspace-owned edits, disabling, and deletion remain respected.
+const memoryJobMarker = join(cattyWorkspaceDir, "memory-maintenance-installed")
+if (!existsSync(memoryJobMarker)) {
+	const job = join(workspace, "jobs", "memory-maintenance")
+	if (!existsSync(job)) {
+		const staging = join(cattyWorkspaceDir, "memory-maintenance-install")
+		mkdirSync(join(staging, "scripts"), { recursive: true })
+		writeFileSync(join(staging, "meta.toml"), memoryMaintenanceMeta)
+		writeFileSync(join(staging, "prompt.md"), memoryMaintenancePrompt)
+		writeFileSync(
+			join(staging, "scripts", "check.ts"),
+			memoryMaintenanceCheck
+		)
+		renameSync(staging, job)
+	}
+	writeFileSync(memoryJobMarker, "1\n")
+}
 
 const legacyMemoryFiles = [
 	[join(workspace, "USER.md"), "Primary User"],
@@ -385,13 +413,19 @@ for (const entry of readdirSync(workspace, { withFileTypes: true })) {
 }
 const legacyMemoryDirs = []
 const seenLegacyMemoryDirs = new Set<string>()
-for (const path of ["memory", "memories", "Memory", "Memories"].map((name) =>
+const activeMemoryStat = lstatSync(join(workspace, "memory"))
+for (const path of ["memories", "Memory", "Memories"].map((name) =>
 	join(workspace, name)
 )) {
 	if (!existsSync(path)) continue
 	const stat = lstatSync(path)
 	const key = `${stat.dev}:${stat.ino}`
-	if (!stat.isDirectory() || seenLegacyMemoryDirs.has(key)) continue
+	if (
+		!stat.isDirectory() ||
+		seenLegacyMemoryDirs.has(key) ||
+		(stat.dev === activeMemoryStat.dev && stat.ino === activeMemoryStat.ino)
+	)
+		continue
 	seenLegacyMemoryDirs.add(key)
 	legacyMemoryDirs.push(path)
 }
@@ -444,12 +478,12 @@ ${movedMemoryFiles.map((path) => `- ${relative(workspace, path)}`).join("\n")}
 Run this post-migration cleanup in the workspace:
 
 1. Read MEMORY.qmd and every migrated file listed above.
-2. Rewrite MEMORY.qmd as the canonical durable memory file using clean sections for primary user context, agent identity/personality, preferences, and durable notes.
-3. Your goal is organization only, not condensation. Do not summarize away, compress away, generalize away, or omit any information from the migrated files or existing MEMORY.qmd content.
+2. Keep MEMORY.qmd within 12000 characters: primary user context, agent identity/personality, essential preferences, and links to memory/ topic notes. Save all detailed facts to topic notes first. Use the memory read/write tools for version checks and recovery history.
+3. Preserve all information across the core and topic notes. Do not summarize away, compress away, generalize away, or omit source details.
 4. Preserve every user fact, preference, personality note, durable memory, caveat, example, and detail. If you are unsure whether something matters, keep it.
 5. You may remove exact duplicates, but only when the same information is truly repeated with no extra nuance.
 6. Do not paste files as one big unordered dump; reorganize the content so future agents can use it directly while preserving all information.
-7. Remove or update active workspace references that point future agents to durable memory sources outside MEMORY.qmd or the built-in QMD memory tool.
+7. Update active workspace references to point to MEMORY.qmd, memory/ topic notes, and the built-in memory tool.
 8. Do not edit or delete _migrated/ except to read it for context.
 9. Keep edits careful and summarize what changed.`
 	)

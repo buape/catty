@@ -1,0 +1,12 @@
+enabled = true
+session = "separate"
+priority = "low"
+
+[schedule]
+type = "interval"
+hours = 24
+
+[[checks]]
+id = "changed-memory"
+run = "bun scripts/check.ts"
+timeoutSeconds = 30

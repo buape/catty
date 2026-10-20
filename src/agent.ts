@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
@@ -49,6 +48,7 @@ import {
 import { splitDiscordContent } from "./discord-message"
 import { createJobsController, migrateHeartbeatToJob } from "./jobs"
 import { createReactionListeners } from "./listeners/reactions"
+import { memoryContext } from "./memory-files"
 import { cattySystemPrompt } from "./prompt"
 import { createDiscordTool } from "./tools/discord"
 import { createMemoryTool } from "./tools/memory"
@@ -60,7 +60,9 @@ export async function startCatty(options?: { newSession?: boolean }) {
 		homedir()
 	)
 	process.env.PI_CODING_AGENT_DIR = agentDir
-	console.log(`[catty] QMD memory loaded into pi context: ${memoryPath}`)
+	console.log(
+		`[catty] Memory core: ${memoryPath}; topic notes retrieved on demand`
+	)
 	console.log(
 		`[catty] system prompt sent to pi:\n---\n${cattySystemPrompt}\n---`
 	)
@@ -122,14 +124,28 @@ export async function startCatty(options?: { newSession?: boolean }) {
 		extensionFactories: [
 			createCodemodeExtension(),
 			createToolSearchExtension(),
-			createMcpExtension()
+			createMcpExtension(),
+			(pi) => {
+				pi.on("before_agent_start", (event) => {
+					// Refresh the bounded core for every run, including long-lived jobs.
+					const core = memoryContext(workspace)
+					event.systemPromptOptions.contextFiles = [
+						...event.systemPromptOptions.contextFiles.filter(
+							(file) =>
+								file.path !== memoryPath &&
+								file.path !== core.path
+						),
+						core
+					]
+				})
+			}
 		],
 		agentsFilesOverride: (current) => ({
 			agentsFiles: [
 				...current.agentsFiles.filter(
 					(file) => file.path !== memoryPath
 				),
-				{ path: memoryPath, content: readFileSync(memoryPath, "utf8") }
+				memoryContext(workspace)
 			]
 		}),
 		systemPromptOverride: () => cattySystemPrompt,
@@ -137,7 +153,7 @@ export async function startCatty(options?: { newSession?: boolean }) {
 	})
 	await resourceLoader.reload()
 
-	const memoryTool = createMemoryTool(workspace, memoryPath)
+	const memoryTool = createMemoryTool(workspace)
 	await memoryTool.predownload()
 	const heartbeatMigration = migrateHeartbeatToJob({
 		workspace,
@@ -269,7 +285,7 @@ export async function startCatty(options?: { newSession?: boolean }) {
 			for (const prompt of prompts) {
 				text = ""
 				thinking = ""
-				const migrationPrompt = `Catty post-migration side session. This is trusted migration guidance, not a Discord message. Complete the requested workspace cleanup, then summarize what changed.\n\n${prompt.prompt}`
+				const migrationPrompt = `Catty post-migration side session. This is trusted migration guidance, not a Discord message. Complete the requested workspace cleanup, then summarize what changed.\n\n${prompt.prompt}\n\nMemory layout requirement: keep MEMORY.qmd within 12000 characters, containing identity, essential preferences, and links. Preserve all detailed source information in memory/ topic notes, not in the core. Use the memory read/write tools for version checks and recovery history. Do not delete source artifacts. This layout requirement supersedes any instruction above to put every detail in MEMORY.qmd.`
 				console.log(`[migration] prompt: ${prompt.title}`)
 				await migrationSession.prompt(migrationPrompt)
 				if (thinking.trim())

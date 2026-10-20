@@ -1,0 +1,22 @@
+import { createHash } from "node:crypto"
+import { existsSync, readFileSync } from "node:fs"
+import { join, resolve } from "node:path"
+
+const workspace = resolve(import.meta.dir, "../../..")
+const checkpoint = join(workspace, ".internal", "memory-reviewed.json")
+const reviewed = existsSync(checkpoint)
+	? JSON.parse(readFileSync(checkpoint, "utf8"))
+	: {}
+const files = ["MEMORY.qmd", ...new Bun.Glob("memory/**/*.{md,qmd}").scanSync({
+	cwd: workspace,
+	onlyFiles: true,
+	followSymlinks: false
+})].filter((file) => !file.startsWith("memory/_archive/"))
+const changed = files.some((file) => {
+	const path = join(workspace, file)
+	const hash = existsSync(path)
+		? createHash("sha256").update(readFileSync(path, "utf8")).digest("hex")
+		: null
+	return hash !== reviewed[file]
+}) || Object.keys(reviewed).some((file) => !files.includes(file) && reviewed[file] !== null)
+console.log(JSON.stringify({ run: changed, reason: changed ? "Memory notes changed" : "No memory changes since review" }))
