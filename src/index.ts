@@ -8,6 +8,7 @@ import {
 import { homedir, platform, userInfo } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth"
+import "./codemode-runtime"
 import { isCattyAuthCommand, runCattyAuth } from "./auth"
 
 registerBunOAuthFlows()
