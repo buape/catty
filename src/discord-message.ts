@@ -1,6 +1,7 @@
 import {
 	type BaseComponentInteraction,
 	MessageFlags,
+	type ModalInteraction,
 	Routes
 } from "@buape/carbon"
 
@@ -48,7 +49,7 @@ export const extractDiscordComponentResponse = (text: string) => {
 // Carbon reply() edits @original after defer(); raw CV2 JSON bypasses its
 // component-class serializer, just like the channel response path.
 export const replyToDeferredComponentInteraction = async (
-	interaction: BaseComponentInteraction,
+	interaction: BaseComponentInteraction | ModalInteraction,
 	text: string
 ) => {
 	const response = text.trim() || "No text response."
