@@ -47,7 +47,6 @@ import {
 } from "./config"
 import {
 	extractDiscordComponentResponse,
-	replyToDeferredComponentInteraction,
 	splitDiscordContent
 } from "./discord-message"
 import { createJobsController, migrateHeartbeatToJob } from "./jobs"
@@ -1323,7 +1322,7 @@ ${content || "[no text content]"}
 			console.log("[discord] ignored unauthorized component", data.id)
 			return
 		}
-		await interaction.defer()
+		await interaction.defer({ ephemeral: true })
 		const boundary = data.id
 		const piPrompt = `Discord component interaction ${data.id} from ${data.member?.user?.username ?? data.user?.username ?? "unknown"} (${userId}) in ${channelId}${guildId ? ` guild ${guildId}` : ""}.
 
@@ -1337,20 +1336,18 @@ ${JSON.stringify(data, null, 2)}
 			const runtime = await getChannelPiRuntime(channelId)
 			await runtime.enqueuePi(async () => {
 				console.log("[pi] prompt started", data.id)
-				let text = ""
-				const unsubscribe = runtime.session.subscribe((event) => {
-					if (event.type === "agent_end")
-						text = finalAssistantText(event.messages)
-				})
 				try {
 					await runtime.promptSession(piPrompt)
-				} finally {
-					unsubscribe()
+					await interaction.reply("Done")
+				} catch (error) {
+					console.error("[pi] error for component", data.id, error)
+					await interaction.reply(
+						"Catty hit an error. Check service logs."
+					)
 				}
-				await replyToDeferredComponentInteraction(interaction, text)
 			})
 		} catch (error) {
-			console.error("[pi] error for component", data.id, error)
+			console.error("[pi] setup error for component", data.id, error)
 			await interaction.reply("Catty hit an error. Check service logs.")
 		}
 	}
