@@ -13,27 +13,43 @@ import { isCattyAuthCommand, runCattyAuth } from "./auth"
 
 registerBunOAuthFlows()
 
+process.on("uncaughtException", (error) => {
+	console.error(
+		`error: ${error instanceof Error ? error.message : String(error)}`
+	)
+	if (Bun.env.CATTY_DEBUG)
+		console.error(error instanceof Error ? (error.stack ?? "") : "")
+	process.exit(1)
+})
+
 const run = async (command: string[]) => {
 	console.log(`$ ${command.join(" ")}`)
 	const process = Bun.spawn(command, {
 		stdout: "inherit",
-		stderr: "inherit"
+		stderr: "pipe"
 	})
-	const code = await process.exited
-	if (code !== 0) throw new Error(`${command[0]} exited with ${code}`)
+	const [code, stderr] = await Promise.all([
+		process.exited,
+		new Response(process.stderr).text()
+	])
+	if (code !== 0)
+		throw new Error(
+			`${command[0]} exited with ${code}${stderr.trim() ? `: ${stderr.trim()}` : ""}`
+		)
 }
 
 const cattyBin = () =>
 	Bun.argv[0].endsWith("bun") || Bun.argv[0].endsWith("bun.exe")
-		? "/opt/homebrew/bin/catty"
+		? (Bun.which("catty") ?? "/opt/homebrew/bin/catty")
 		: Bun.argv[0]
 
 const bunBin = () =>
 	Bun.argv[0].endsWith("bun") || Bun.argv[0].endsWith("bun.exe")
 		? Bun.argv[0]
-		: process.env.BUN_INSTALL
-			? join(process.env.BUN_INSTALL, "bin/bun")
-			: "/opt/homebrew/bin/bun"
+		: (Bun.which("bun") ??
+			(process.env.BUN_INSTALL
+				? join(process.env.BUN_INSTALL, "bin/bun")
+				: "/opt/homebrew/bin/bun"))
 
 const printHelp = () => {
 	console.log(`Catty
@@ -206,7 +222,10 @@ const devMode = Bun.argv.includes("--dev")
 const newSessionEnv = `CATTY_NEW_SESSION_${serviceLabel.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase()}`
 const wantsNewSession =
 	args.includes("--new") || process.env[newSessionEnv] === "1"
-const devRoot = join(homedir(), "Developer/catty")
+const repoRoot = dirname(dirname(resolve(Bun.main)))
+const devRoot = existsSync(join(repoRoot, "package.json"))
+	? repoRoot
+	: join(homedir(), "Developer/catty")
 const logDir = join(homedir(), "Library/Logs/catty")
 const logPath = join(logDir, agentName ? `${serviceName}.log` : "catty.log")
 const errorLogPath = join(
@@ -220,6 +239,15 @@ const serviceFile = () =>
 		: join(homedir(), ".config/systemd/user", systemdService)
 
 const serviceTarget = () => `gui/${userInfo().uid}/${serviceLabel}`
+
+const requireInstalled = () => {
+	if (!existsSync(serviceFile())) {
+		console.error(
+			`error: ${serviceName} service is not installed. Run \`catty service install\` first.`
+		)
+		process.exit(1)
+	}
+}
 
 const installService = async () => {
 	mkdirSync(dirname(serviceFile()), { recursive: true })
@@ -309,6 +337,7 @@ WantedBy=default.target
 }
 
 const runService = async (action: string) => {
+	if (action !== "uninstall") requireInstalled()
 	if (platform() === "darwin") {
 		if (action === "start")
 			await run(["launchctl", "kickstart", "-k", serviceTarget()])
@@ -420,16 +449,26 @@ if (!command) {
 	printHelp()
 } else if (command === "service") {
 	const action = args[args.indexOf("service") + 1]
-	if (action === "install") await installService()
-	else if (action === "logs")
-		await showLogs(args.includes("--follow") || args.includes("-f"))
-	else if (action === "errors")
-		await showLogs(args.includes("--follow") || args.includes("-f"), true)
-	else if (
-		["start", "stop", "restart", "status", "uninstall"].includes(action)
-	)
-		await runService(action)
-	else printHelp()
+	try {
+		if (action === "install") await installService()
+		else if (action === "logs")
+			await showLogs(args.includes("--follow") || args.includes("-f"))
+		else if (action === "errors")
+			await showLogs(
+				args.includes("--follow") || args.includes("-f"),
+				true
+			)
+		else if (
+			["start", "stop", "restart", "status", "uninstall"].includes(action)
+		)
+			await runService(action)
+		else printHelp()
+	} catch (error) {
+		console.error(
+			`error: ${error instanceof Error ? error.message : String(error)}`
+		)
+		process.exit(1)
+	}
 } else {
 	throw new Error(`Unknown command: ${command}`)
 }
