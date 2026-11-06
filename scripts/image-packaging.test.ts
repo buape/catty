@@ -1,30 +1,29 @@
 import { afterAll, expect, test } from "bun:test"
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs"
+import {
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	rmSync,
+	symlinkSync
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { embedPhoton } from "./embed-photon"
 
 const temp = mkdtempSync(join(tmpdir(), "catty-image-packaging-"))
-const root = join(import.meta.dir, "..")
 const binary = join(temp, "image-smoke")
+const entrypoint = join(import.meta.dir, "image-smoke.ts")
 afterAll(() => rmSync(temp, { recursive: true, force: true }))
 
-test("compiled image processing works without build-machine paths", async () => {
-	const build = Bun.spawn(
-		[
-			process.execPath,
-			"build",
-			join(import.meta.dir, "image-smoke.ts"),
-			"--compile",
-			"--define",
-			'__dirname="/__catty_build_source_unavailable__"',
-			"--outfile",
-			binary
-		],
-		{ cwd: root, stdout: "pipe", stderr: "pipe" }
-	)
-	expect(await build.exited).toBe(0)
-
-	// Missing WASM must reproduce the failure, even with a valid tiny PNG.
+test("compiled images work with only the executable installed", async () => {
+	// Make the old computed lookup unusable even on the build machine.
+	const define = { __dirname: '"/__catty_build_source_unavailable__"' }
+	const missingBuild = await Bun.build({
+		entrypoints: [entrypoint],
+		compile: { outfile: binary },
+		define
+	})
+	expect(missingBuild.success).toBe(true)
 	const missing = Bun.spawn([binary], {
 		cwd: temp,
 		stdout: "pipe",
@@ -32,25 +31,23 @@ test("compiled image processing works without build-machine paths", async () => 
 	})
 	expect(await missing.exited).not.toBe(0)
 
-	const copy = Bun.spawn([process.execPath, "scripts/copy-image-wasm.ts"], {
-		cwd: root,
-		stdout: "pipe",
-		stderr: "pipe"
+	const embeddedBuild = await Bun.build({
+		entrypoints: [entrypoint],
+		compile: { outfile: binary },
+		define,
+		loader: { ".wasm": "file" },
+		plugins: [embedPhoton]
 	})
-	expect(await copy.exited).toBe(0)
-	copyFileSync(
-		join(root, "dist/photon_rs_bg.wasm"),
-		join(temp, "photon_rs_bg.wasm")
-	)
+	expect(embeddedBuild.success).toBe(true)
 
-	// Match Homebrew: executable reached through a symlink, asset beside its
-	// real binary, and an unrelated working directory with no node_modules.
+	// Homebrew-style symlink and unrelated working directory: no sidecars,
+	// node_modules, runtime extraction, or additional installed executables.
 	const bin = join(temp, "bin")
 	const cwd = join(temp, "workspace")
 	mkdirSync(bin)
 	mkdirSync(cwd)
-	const link = Bun.spawn(["ln", "-s", binary, join(bin, "image-smoke")])
-	expect(await link.exited).toBe(0)
+	symlinkSync(binary, join(bin, "image-smoke"))
+	const before = readdirSync(temp).sort()
 	const installed = Bun.spawn([join(bin, "image-smoke")], {
 		cwd,
 		stdout: "pipe",
@@ -60,4 +57,7 @@ test("compiled image processing works without build-machine paths", async () => 
 	expect(await new Response(installed.stdout).text()).toContain(
 		"Image smoke test passed"
 	)
+	expect(readdirSync(temp).sort()).toEqual(before)
+	expect(readdirSync(cwd)).toEqual([])
+	expect(readdirSync(bin)).toEqual(["image-smoke"])
 }, 60000)
