@@ -34,7 +34,7 @@ git push && git push --tags
    - macOS arm64
    - macOS amd64
    - Linux amd64
-5. package each binary as a tarball
+5. package each binary and `photon_rs_bg.wasm` as a tarball
 6. publish GitHub release assets
 7. send `repository_dispatch` to `buape/tap` with the release tag
 
@@ -51,6 +51,23 @@ After the tap workflow updates the formula:
 ```bash
 brew install buape/tap/catty
 ```
+
+## Image-processing runtime asset
+
+Pi's Photon image decoder loads `photon_rs_bg.wasm` at runtime. Bun does not
+include that file just because the JavaScript decoder is bundled. Every binary
+build copies the matching WASM from Pi's installed Photon dependency into `dist/`.
+Each release archive must contain both `catty` and `photon_rs_bg.wasm`.
+
+Install both files in the same directory. The Homebrew formula must install both
+into `bin`; installing only `catty` breaks both attachment processing and image
+reads, even for tiny images. Pi currently reports a missing decoder as an image
+size-limit error, so shrinking the image will not help.
+
+Run `bun test scripts/image-packaging.test.ts` before release. It forces the
+compiled decoder's build-machine path to be unavailable, verifies the missing
+asset fails, then verifies tiny and oversized PNGs through a Homebrew-style
+symlink with the asset beside the real executable.
 
 ## Asset naming
 

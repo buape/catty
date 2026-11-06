@@ -24,6 +24,9 @@ jobs:
 
       - run: bun run lint
 
+      - name: Verify standalone image processing
+        run: bun test scripts/image-packaging.test.ts
+
       - name: Build release archives
         shell: bash
         run: |
@@ -35,15 +38,18 @@ jobs:
           mkdir -p release
           mkdir -p "release/catty-${VERSION}-darwin-arm64"
           cp dist/catty-darwin-arm64 "release/catty-${VERSION}-darwin-arm64/catty"
-          tar -C "release/catty-${VERSION}-darwin-arm64" -czf "catty-${VERSION}-darwin-arm64.tar.gz" catty
+          cp dist/photon_rs_bg.wasm "release/catty-${VERSION}-darwin-arm64/"
+          tar -C "release/catty-${VERSION}-darwin-arm64" -czf "catty-${VERSION}-darwin-arm64.tar.gz" catty photon_rs_bg.wasm
 
           mkdir -p "release/catty-${VERSION}-darwin-amd64"
           cp dist/catty-darwin-x64 "release/catty-${VERSION}-darwin-amd64/catty"
-          tar -C "release/catty-${VERSION}-darwin-amd64" -czf "catty-${VERSION}-darwin-amd64.tar.gz" catty
+          cp dist/photon_rs_bg.wasm "release/catty-${VERSION}-darwin-amd64/"
+          tar -C "release/catty-${VERSION}-darwin-amd64" -czf "catty-${VERSION}-darwin-amd64.tar.gz" catty photon_rs_bg.wasm
 
           mkdir -p "release/catty-${VERSION}-linux-amd64"
           cp dist/catty-linux-x64 "release/catty-${VERSION}-linux-amd64/catty"
-          tar -C "release/catty-${VERSION}-linux-amd64" -czf "catty-${VERSION}-linux-amd64.tar.gz" catty
+          cp dist/photon_rs_bg.wasm "release/catty-${VERSION}-linux-amd64/"
+          tar -C "release/catty-${VERSION}-linux-amd64" -czf "catty-${VERSION}-linux-amd64.tar.gz" catty photon_rs_bg.wasm
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v3
