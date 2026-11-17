@@ -78,6 +78,8 @@ Matches required behavior:
 
 When `[pi].channelSessions = true`, `src/agent.ts` lazily creates a persistent session and queue per Discord channel so different channels can run simultaneously. The default remains a single shared session.
 
+Guild overrides (`[pi.guilds."guild-id"].session = "guild"`) take precedence over either global setting. Verify two channels/threads in the same configured guild share one queue/session, a second guild is isolated, DMs/unconfigured guilds keep the global behavior, and reactions, components, and `/stop` use the same routing. Rebooting resumes `.internal/guild-sessions/<guild-id>/`; no existing main/channel history is merged or deleted. `catty preview --guild GUILD_ID` selects that directory. Routing and reaction-listener regression tests run with `bun test src/sessions.test.ts src/listeners/reactions.test.ts`.
+
 Scheduled jobs use a shared separate in-memory session by default unless a job sets `session = "main"`. `session = "main"` jobs enter the same main queue as Discord messages, usually with `priority = "low"`. Queued migration prompts run before the main session starts via `SessionManager.inMemory(workspace)`, then Catty reloads resources and creates the main session.
 
 ## Jobs smoke inspection

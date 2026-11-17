@@ -61,7 +61,8 @@ Usage:
   catty auth logout [provider]  Remove stored auth
   catty login [provider]        Alias for catty auth login
   catty preview [agent] [channel-id]
-                              Resume the main or channel pi session in the pi TUI
+  catty preview [agent] --guild GUILD_ID
+                              Resume the main, channel, or guild pi session in the pi TUI
   catty service install         Install the user service
   catty service uninstall       Uninstall the user service
   catty service start           Start the service
@@ -113,7 +114,7 @@ const previewArgs = () => {
 	const values: string[] = []
 	for (let i = index + 1; i > 0 && i < args.length; i++) {
 		const arg = args[i]
-		if (arg === "--name" || arg === "--config") i++
+		if (arg === "--name" || arg === "--config" || arg === "--guild") i++
 		else if (arg && !arg.startsWith("--")) values.push(arg)
 	}
 	return values
@@ -129,6 +130,9 @@ const resolveHome = (path: string) => path.replace(/^~(?=$|\/)/, homedir())
 const runPreview = async () => {
 	const values = previewArgs()
 	const flagAgent = configValue("--name")
+	const guildId = configValue("--guild")
+	if (args.includes("--guild") && (!guildId || guildId.startsWith("--")))
+		throw new Error("--guild requires a guild ID")
 	let previewAgent = flagAgent
 	let channelId: string | undefined
 	if (flagAgent) channelId = values[0]
@@ -160,8 +164,19 @@ const runPreview = async () => {
 			piAgentDir = resolve(resolveHome(parsed.pi.agentDir))
 	}
 
+	if (guildId && channelId)
+		throw new Error("Choose a channel ID or --guild, not both")
 	const command = ["pi", "--resume"]
-	if (channelId) {
+	if (guildId) {
+		command.push(
+			"--session-dir",
+			join(
+				workspace,
+				".internal/guild-sessions",
+				guildId.replace(/[^a-zA-Z0-9_-]/g, "_")
+			)
+		)
+	} else if (channelId) {
 		const safeChannelId = channelId.replace(/[^a-zA-Z0-9_-]/g, "_")
 		command.push(
 			"--session-dir",

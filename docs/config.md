@@ -46,6 +46,11 @@ verbose = false
 # thinking = "medium"
 # channelSessions = false
 
+# Optional: share a separate session across every channel in one guild.
+# Overrides channelSessions for that guild only.
+# [pi.guilds."guild-id"]
+# session = "guild"
+
 [pi.apiKeys]
 # openai = "optional-openai-api-key"
 # ollama-cloud = "optional-ollama-cloud-key-if-your-models-json-provider-uses-this-name"
@@ -224,7 +229,7 @@ ignoredIds = ["your-user-id"]
 
 Only DMs are logged. Guild messages are not logged here. `ignoredIds` may contain user IDs or DM channel IDs; matching DM exchanges are skipped entirely, including Catty's replies.
 
-## Channel sessions
+## Discord session grouping
 
 By default, all Discord channels share one persistent main pi session and one queue. To allow different channels to run simultaneously, opt in to per-channel sessions:
 
@@ -234,6 +239,19 @@ channelSessions = true
 ```
 
 When enabled, each Discord channel gets its own persistent pi session under Catty's internal workspace state. Messages and reaction context from the same channel are still queued in order for that channel.
+
+To share one isolated session across all channels in a particular server, add a guild override:
+
+```toml
+[pi.guilds."1565181505934725250"]
+session = "guild"
+```
+
+This override takes precedence whether `pi.channelSessions` is `true`, `false`, or omitted. All accepted messages, reactions, component interactions, and `/stop` commands in that guild resolve to the same persistent session and queue, including threads and forum posts. Different guilds remain isolated and can run concurrently. Guild authorization and response/mention settings are unchanged; grouping does not make otherwise ignored messages eligible.
+
+Unconfigured guilds and DMs retain the global `channelSessions` behavior. Voice and scheduled jobs retain their existing session selection. Guild sessions persist under `.internal/guild-sessions/<guild-id>/`; existing channel-session paths are unchanged. Enabling a guild override starts or resumes that guild's history; it does not merge old main/channel histories. Removing it restores the global routing without deleting stored histories. `--new` and automatic compaction-failure recovery also apply to guild sessions.
+
+Inspect the guild session with `catty preview --guild GUILD_ID`, or `catty preview jade --guild GUILD_ID` for a named agent. Use this explicit guild form rather than passing a channel ID when grouping is enabled. Restart Catty after changing the config.
 
 ## Jobs
 

@@ -52,6 +52,7 @@ import {
 import { createJobsController, migrateHeartbeatToJob } from "./jobs"
 import { createReactionListeners } from "./listeners/reactions"
 import { cattySystemPrompt } from "./prompt"
+import { resolveDiscordSession } from "./sessions"
 import { createDiscordTool } from "./tools/discord"
 import { createMemoryTool } from "./tools/memory"
 import { createRuntimeInfoTool } from "./tools/runtime-info"
@@ -577,37 +578,38 @@ export async function startCatty(options?: { newSession?: boolean }) {
 		})()
 		return separateJobsRuntime
 	}
-	const channelPiRuntimes = new Map<string, Promise<PiRuntime>>()
-	const getChannelPiRuntime = (channelId: string) => {
-		if (!channelSessions) return Promise.resolve(mainRuntime)
-		const existing = channelPiRuntimes.get(channelId)
+	const discordPiRuntimes = new Map<string, Promise<PiRuntime>>()
+	const getDiscordPiRuntime = (channelId: string, guildId?: string) => {
+		const route = resolveDiscordSession(config.pi, channelId, guildId)
+		if (route.scope === "main") return Promise.resolve(mainRuntime)
+		const existing = discordPiRuntimes.get(route.key)
 		if (existing) return existing
 		const created = (async () => {
 			const sessionDir = join(
 				cattyWorkspaceDir,
-				"channel-sessions",
-				channelId.replace(/[^a-zA-Z0-9_-]/g, "_")
+				`${route.scope}-sessions`,
+				route.id.replace(/[^a-zA-Z0-9_-]/g, "_")
 			)
 			const { session, modelFallbackMessage } =
 				await createPiSession(sessionDir)
 			if (modelFallbackMessage)
-				console.log(`[pi:${channelId}] ${modelFallbackMessage}`)
+				console.log(`[pi:${route.key}] ${modelFallbackMessage}`)
 			console.log(
-				`[pi:${channelId}] session: ${session.sessionFile ?? session.sessionId}`
+				`[pi:${route.key}] session: ${session.sessionFile ?? session.sessionId}`
 			)
 			return createPiRuntime({
-				label: `channel ${channelId}`,
+				label: `${route.scope} ${route.id}`,
 				session,
 				restartSession: async () => {
 					const { session, modelFallbackMessage } =
 						await createPiSession(sessionDir, true)
 					if (modelFallbackMessage)
-						console.log(`[pi:${channelId}] ${modelFallbackMessage}`)
+						console.log(`[pi:${route.key}] ${modelFallbackMessage}`)
 					return session
 				}
 			})
 		})()
-		channelPiRuntimes.set(channelId, created)
+		discordPiRuntimes.set(route.key, created)
 		return created
 	}
 	let voicePiRuntime: Promise<PiRuntime> | undefined
@@ -938,7 +940,7 @@ ${content}
 				return
 			}
 
-			const runtime = await getChannelPiRuntime(channelId)
+			const runtime = await getDiscordPiRuntime(channelId, guildId)
 			try {
 				await runtime.session.abort()
 				console.log("[discord] /stop aborted session for", channelId)
@@ -1179,7 +1181,10 @@ ${content || "[no text content]"}
 			console.log("[pi] prompt queued for message", data.message.id)
 			console.log(`[pi] exact prompt:\n---\n${piPrompt}\n---`)
 
-			const runtime = await getChannelPiRuntime(data.message.channelId)
+			const runtime = await getDiscordPiRuntime(
+				data.message.channelId,
+				guildId
+			)
 			const job = runtime.enqueuePi(async () => {
 				console.log("[pi] prompt started", data.message.id)
 				let text = ""
@@ -1333,7 +1338,7 @@ ${JSON.stringify(data, null, 2)}
 <end_untrusted_component_interaction_${boundary}>`
 		console.log("[pi] prompt queued for component", data.id)
 		try {
-			const runtime = await getChannelPiRuntime(channelId)
+			const runtime = await getDiscordPiRuntime(channelId, guildId)
 			await runtime.enqueuePi(async () => {
 				console.log("[pi] prompt started", data.id)
 				try {
@@ -1452,7 +1457,7 @@ ${JSON.stringify(data, null, 2)}
 				new AssistantMessage(),
 				...createReactionListeners({
 					getClient: () => client,
-					getPiRuntime: getChannelPiRuntime,
+					getPiRuntime: getDiscordPiRuntime,
 					allowedDiscordUser
 				})
 			]
@@ -1493,7 +1498,7 @@ ${JSON.stringify(data, null, 2)}
 		process.on(signal, async () => {
 			jobs.dispose()
 			gateway.disconnect()
-			for (const runtime of channelPiRuntimes.values())
+			for (const runtime of discordPiRuntimes.values())
 				(await runtime).session.dispose()
 			if (voicePiRuntime) (await voicePiRuntime).session.dispose()
 			if (separateJobsRuntime)
