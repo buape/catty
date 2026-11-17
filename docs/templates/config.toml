@@ -28,6 +28,11 @@ verbose = false
 # Optional thinking level: off, minimal, low, medium, high, xhigh. Omit to use pi default.
 # thinking = "medium"
 
+# Optional: share a separate session across every channel in one guild.
+# Overrides channelSessions for that guild only.
+# [pi.guilds."guild-id"]
+# session = "guild"
+
 # Runtime API keys made available to pi providers.
 [pi.apiKeys]
 # Provider names must match pi's provider IDs. Commented because these are optional.

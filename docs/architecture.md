@@ -14,7 +14,7 @@ Catty is the project/harness. The running assistant is an agent inside Catty; du
 6. Reload workspace resources after successful post-migration prompts.
 7. Create the main pi `AgentSession` for the configured workspace, resuming the latest session unless `--new` is passed.
 8. Register custom Discord, QMD-backed memory, Catty jobs, and runtime-info tools.
-9. If `[pi].channelSessions = true`, lazily create one persistent pi session and queue per Discord channel as messages arrive.
+9. Resolve any `[pi.guilds."guild-id"].session = "guild"` override first; otherwise use `[pi].channelSessions` to choose a persistent channel session or the shared main session. Sessions and queues are created lazily as messages arrive.
 10. Start one Carbon `Client` with a `MessageCreateListener`.
 11. Carbon receives Discord `MESSAGE_CREATE` events through `GatewayPlugin`.
 12. Listener logs the received Discord message.
@@ -34,6 +34,8 @@ Catty is the project/harness. The running assistant is an agent inside Catty; du
 By default there is exactly one main pi session object for Discord runtime. It is created at startup and reused for every accepted Discord message. This resumes the latest workspace session; `--new` forces a fresh session object.
 
 Set `[pi].channelSessions = true` to opt in to one persistent pi session and one queue per Discord channel. Channel sessions are created lazily under workspace internal state, so messages in different channels can run simultaneously while messages in the same channel stay ordered.
+
+A guild override (`[pi.guilds."guild-id"].session = "guild"`) instead shares a persistent session and queue across that guild's channels regardless of the global setting. Messages, reactions, components, and `/stop` pass the guild ID to the same resolver. Guild/channel keys and directories are namespaced separately; existing histories are not merged. Unconfigured guilds, DMs, voice, and jobs keep their existing behavior.
 
 Maintenance prompts are deliberate exceptions so they do not pollute resumed Discord conversation history: scheduled jobs use a shared separate in-memory jobs session by default, and post-migration prompts run before the main session starts in a separate in-memory side session. A job can set `session = "main"` to use the main queue/session instead.
 
