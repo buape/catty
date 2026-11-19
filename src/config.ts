@@ -11,6 +11,7 @@ import {
 import { homedir } from "node:os"
 import { dirname, extname, join, relative, resolve } from "node:path"
 import templateConfig from "../docs/templates/config.toml" with { type: "text" }
+import type { DiscordSessionConfig } from "./sessions"
 
 const configVersion = 7
 
@@ -209,10 +210,9 @@ export const config = Bun.TOML.parse(configText) as {
 	token: string
 	verbose: boolean
 	port?: number
-	pi?: {
+	pi?: DiscordSessionConfig & {
 		workspace?: string
 		agentDir?: string
-		channelSessions?: boolean
 		provider?: string
 		model?: string
 		thinking?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh"

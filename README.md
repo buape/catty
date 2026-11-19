@@ -104,7 +104,7 @@ See `docs/jobs.md` for the scheduled job folder contract, deterministic script c
 
 - By default, one Catty process uses one shared pi session.
 - On startup, Catty resumes the most recent pi session for the workspace, or creates one if none exists. Pass `--new` to force a fresh pi session.
-- Discord messages are queued through that one session by default. Set `[pi].channelSessions = true` to give each Discord channel its own persistent pi session and queue so channels can run simultaneously.
+- Discord messages are queued through that one session by default. Set `[pi].channelSessions = true` to give each Discord channel its own persistent pi session and queue so channels can run simultaneously. Set `[pi.guilds."guild-id"].session = "guild"` to share one isolated session and queue across that server, overriding the global setting. See [Discord session grouping](docs/config.md#discord-session-grouping).
 - Reply context is included when a Discord message replies to another message.
 - User-provided Discord content is wrapped in per-message untrusted begin/end blocks before pi sees it.
 - Catty uses Discord typing indicators while pi is working instead of sending `Thinking…`.
