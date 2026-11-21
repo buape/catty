@@ -24,8 +24,8 @@ jobs:
 
       - run: bun run lint
 
-      - name: Verify single-executable image processing
-        run: bun test scripts/image-packaging.test.ts
+      - name: Verify single-executable images and codemode
+        run: bun test scripts/image-packaging.test.ts scripts/codemode-packaging.test.ts
 
       - name: Build release archives
         shell: bash
