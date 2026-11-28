@@ -11,6 +11,7 @@ import {
 import { homedir } from "node:os"
 import { dirname, extname, join, relative, resolve } from "node:path"
 import templateConfig from "../docs/templates/config.toml" with { type: "text" }
+import type { ResponsesConfig } from "./responses"
 import type { DiscordSessionConfig } from "./sessions"
 
 const configVersion = 7
@@ -232,18 +233,7 @@ export const config = Bun.TOML.parse(configText) as {
 			}
 		>
 	}
-	responses?: {
-		default?: string
-		prefix?: string
-		channels?: Record<string, string>
-		guilds?: Record<
-			string,
-			{
-				default?: string
-				channels?: Record<string, string | { mode?: string }>
-			}
-		>
-	}
+	responses?: ResponsesConfig
 	jobs?: {
 		enabled?: boolean
 		pollSeconds?: number

@@ -53,7 +53,10 @@ import {
 } from "./discord-message"
 import { createJobsController, migrateHeartbeatToJob } from "./jobs"
 import { createReactionListeners } from "./listeners/reactions"
+import { ChatSteering, UnprocessedInputError } from "./message-delivery"
+import { createPiQueue } from "./pi-queue"
 import { cattySystemPrompt } from "./prompt"
+import { resolveResponses } from "./responses"
 import { resolveDiscordSession } from "./sessions"
 import { createDiscordTool } from "./tools/discord"
 import { createDiscordForms } from "./tools/discord-form"
@@ -334,71 +337,28 @@ export async function startCatty(options?: { newSession?: boolean }) {
 		return { session, modelFallbackMessage }
 	}
 
-	const createPiQueue = () => {
-		const piJobs: Array<{
-			run: () => Promise<void>
-			lowPriority: boolean
-			resolve: () => void
-			reject: (error: unknown) => void
-		}> = []
-		let piRunning = false
-		const runPiJobs = async () => {
-			if (piRunning) return
-			piRunning = true
-			try {
-				while (piJobs.length > 0) {
-					const normalIndex = piJobs.findIndex(
-						(job) => !job.lowPriority
-					)
-					const [job] = piJobs.splice(
-						normalIndex === -1 ? 0 : normalIndex,
-						1
-					)
-					if (!job) continue
-					try {
-						await job.run()
-						job.resolve()
-					} catch (error) {
-						job.reject(error)
-					}
-				}
-			} finally {
-				piRunning = false
-			}
-		}
-		return (
-			run: () => Promise<void>,
-			options?: { lowPriority?: boolean }
-		) =>
-			new Promise<void>((resolve, reject) => {
-				const lowPriority = options?.lowPriority === true
-				piJobs.push({
-					run,
-					lowPriority,
-					resolve,
-					reject
-				})
-				if (lowPriority) setTimeout(() => void runPiJobs(), 1500)
-				else void runPiJobs()
-			})
-	}
 	type PiRuntime = {
 		label: string
+		steering: ChatSteering
 		session: AgentSession
 		enqueuePi: ReturnType<typeof createPiQueue>
 		restartSession: () => Promise<AgentSession>
 		promptSession: (
 			text: string,
-			promptOptions?: Parameters<AgentSession["prompt"]>[1]
+			promptOptions?: Parameters<AgentSession["prompt"]>[1],
+			beforeRecovery?: () => Promise<void>
 		) => Promise<void>
 	}
+	class ChatResponseSendError extends Error {}
 	class AutoCompactionFailedError extends Error {
 		constructor(
 			readonly runtimeLabel: string,
-			readonly reason: string
+			readonly reason: string,
+			options?: ErrorOptions
 		) {
 			super(
-				`Catty restarted the ${runtimeLabel} pi session after auto-compaction failed: ${reason}`
+				`Catty restarted the ${runtimeLabel} pi session after auto-compaction failed: ${reason}`,
+				options
 			)
 			this.name = "AutoCompactionFailedError"
 		}
@@ -440,16 +400,31 @@ export async function startCatty(options?: { newSession?: boolean }) {
 	}) => {
 		const runtime: PiRuntime = {
 			label,
+			steering: new ChatSteering(),
 			session,
 			enqueuePi,
 			restartSession,
-			promptSession: async (text, promptOptions) => {
+			promptSession: async (text, promptOptions, beforeRecovery) => {
 				let compactionFailure = ""
 				let contextOverflow = ""
 				let overflowCompacted = false
 				let promptError: unknown
+				let settlementError: unknown
+				let modelFailure: Error | undefined
 				const activeSession = runtime.session
 				const unsubscribe = activeSession.subscribe((event) => {
+					if (
+						event.type === "message_end" &&
+						event.message.role === "assistant"
+					)
+						modelFailure =
+							event.message.stopReason === "error" ||
+							event.message.stopReason === "aborted"
+								? new Error(
+										event.message.errorMessage ||
+											event.message.stopReason
+									)
+								: undefined
 					if (event.type === "agent_end") {
 						const assistant = event.messages
 							.filter(
@@ -494,6 +469,11 @@ export async function startCatty(options?: { newSession?: boolean }) {
 				} catch (error) {
 					promptError = error
 				} finally {
+					try {
+						await beforeRecovery?.()
+					} catch (error) {
+						settlementError = error
+					}
 					unsubscribe()
 				}
 				if (!compactionFailure && contextOverflow && !overflowCompacted)
@@ -510,12 +490,28 @@ export async function startCatty(options?: { newSession?: boolean }) {
 						`[pi:${runtime.label}] restarted session: ${runtime.session.sessionFile ?? runtime.session.sessionId}`
 					)
 					await sendRestartDm(runtime, compactionFailure)
-					throw new AutoCompactionFailedError(
+					promptError = new AutoCompactionFailedError(
 						runtime.label,
-						compactionFailure
+						compactionFailure,
+						{ cause: promptError ?? modelFailure }
 					)
 				}
+				if (settlementError) {
+					// Keep delivery recovery actionable, and preserve any model failure.
+					if (promptError || modelFailure) {
+						if (settlementError instanceof Error)
+							settlementError.cause = new AggregateError(
+								[
+									promptError ?? modelFailure,
+									settlementError.cause
+								].filter(Boolean),
+								"Prompt and input delivery failed"
+							)
+					}
+					throw settlementError
+				}
 				if (promptError) throw promptError
+				if (beforeRecovery && modelFailure) throw modelFailure
 			}
 		}
 		return runtime
@@ -644,23 +640,6 @@ export async function startCatty(options?: { newSession?: boolean }) {
 			})
 		})()
 		return voicePiRuntime
-	}
-
-	const getResponseMode = (
-		guildId: string | undefined,
-		channelId: string
-	) => {
-		if (!guildId) return "all"
-
-		const guild = config.responses?.guilds?.[guildId]
-		const channel = guild?.channels?.[channelId]
-		return (
-			(typeof channel === "string" ? channel : channel?.mode) ??
-			config.responses?.channels?.[channelId] ??
-			guild?.default ??
-			config.responses?.default ??
-			"all"
-		)
 	}
 
 	const allowedDiscordUser = async (
@@ -949,6 +928,7 @@ ${content}
 
 			const runtime = await getDiscordPiRuntime(channelId, guildId)
 			try {
+				runtime.steering.closeAdmission()
 				await runtime.session.abort()
 				console.log("[discord] /stop aborted session for", channelId)
 				await interaction.reply("Stopped.")
@@ -1001,7 +981,11 @@ ${content}
 				return
 			}
 
-			const mode = getResponseMode(guildId, data.message.channelId)
+			const { mode, delivery } = resolveResponses(
+				config.responses,
+				data.message.channelId,
+				guildId
+			)
 			const prefix = config.responses?.prefix ?? "!catty"
 			let content = data.content.trim()
 			const attachments = data.rawMessage.attachments ?? []
@@ -1188,33 +1172,32 @@ ${content || "[no text content]"}
 			console.log("[pi] prompt queued for message", data.message.id)
 			console.log(`[pi] exact prompt:\n---\n${piPrompt}\n---`)
 
-			const runtime = await getDiscordPiRuntime(
-				data.message.channelId,
-				guildId
-			)
-			const job = runtime.enqueuePi(async () => {
-				console.log("[pi] prompt started", data.message.id)
-				let text = ""
-				const unsubscribe = runtime.session.subscribe((event) => {
-					if (event.type === "agent_end")
-						text = finalAssistantText(event.messages)
-				})
-
-				try {
-					await runtime.promptSession(
-						piPrompt,
-						images.length > 0 ? { images } : undefined
-					)
-				} finally {
-					unsubscribe()
-					stopTyping()
-					if (attachmentTempDir)
-						await rm(attachmentTempDir, {
-							recursive: true,
-							force: true
-						})
-				}
-
+			const cleanup = async () => {
+				stopTyping()
+				if (attachmentTempDir)
+					await rm(attachmentTempDir, {
+						recursive: true,
+						force: true
+					})
+			}
+			let runtime: PiRuntime
+			try {
+				runtime = await getDiscordPiRuntime(
+					data.message.channelId,
+					guildId
+				)
+			} catch (error) {
+				await cleanup()
+				console.error(
+					"[discord] chat runtime initialization failed",
+					error
+				)
+				await data.message.reply(
+					"Catty could not prepare this chat session. Check service logs."
+				)
+				return
+			}
+			const sendChatResponse = async (text: string) => {
 				const response = text.trim() || "No text response."
 				console.log("[pi] final response for message", data.message.id)
 				console.log(
@@ -1296,15 +1279,67 @@ ${content || "[no text content]"}
 								: ""
 						}`
 					)
+			}
+			const input = {
+				channelId: data.message.channelId,
+				guildId,
+				authorId: data.author.id,
+				mode: delivery,
+				authorized: allowed,
+				responds: true,
+				text: piPrompt,
+				images,
+				cleanup
+			}
+			if (runtime.steering.steer(runtime.session, input)) return
+
+			const job = runtime.enqueuePi(async () => {
+				const session = runtime.session
+				const chat = runtime.steering.open(session, input)
+				console.log("[pi] prompt started", data.message.id)
+				let text = ""
+				const unsubscribe = session.subscribe((event) => {
+					if (event.type === "agent_end")
+						text = finalAssistantText(event.messages)
+				})
+				try {
+					await runtime.promptSession(
+						piPrompt,
+						images.length ? { images } : undefined,
+						() => runtime.steering.settle(chat)
+					)
+					try {
+						await sendChatResponse(text)
+					} catch (error) {
+						throw new ChatResponseSendError(
+							"Discord response send failed; input was not replayed",
+							{ cause: error }
+						)
+					}
+				} finally {
+					unsubscribe()
+					const results = await Promise.allSettled(
+						chat.cleanups.map((cleanup) => cleanup())
+					)
+					for (const result of results)
+						if (result.status === "rejected")
+							console.error(
+								"[discord] chat cleanup failed",
+								result.reason
+							)
+				}
 			})
 
 			await job.catch(async (error) => {
 				console.error("[pi] error for message", data.message.id, error)
-				stopTyping()
 				const response =
-					error instanceof AutoCompactionFailedError
-						? "Catty restarted its pi session after auto-compaction failed. Please resend your message."
-						: "Catty hit an error. Check service logs."
+					error instanceof UnprocessedInputError
+						? error.message
+						: error instanceof AutoCompactionFailedError
+							? "Catty restarted its pi session after auto-compaction failed. Please resend your message."
+							: error instanceof ChatResponseSendError
+								? "The response could not be sent to Discord. I have not rerun the model or replayed your inputs. Check service logs."
+								: "Catty hit an error. Check service logs."
 				await data.message.reply(response)
 				if (logDm)
 					await sendDmLog(
@@ -1540,11 +1575,19 @@ ${JSON.stringify(trigger, null, 2)}
 		process.on(signal, async () => {
 			jobs.dispose()
 			gateway.disconnect()
-			for (const runtime of discordPiRuntimes.values())
-				(await runtime).session.dispose()
+			for (const runtime of discordPiRuntimes.values()) {
+				const current = await runtime
+				current.steering.closeAdmission()
+				await current.session.abort()
+				await current.enqueuePi(async () => {})
+				current.session.dispose()
+			}
 			if (voicePiRuntime) (await voicePiRuntime).session.dispose()
 			if (separateJobsRuntime)
 				(await separateJobsRuntime).session.dispose()
+			mainRuntime.steering.closeAdmission()
+			await mainRuntime.session.abort()
+			await mainRuntime.enqueuePi(async () => {})
 			mainRuntime.session.dispose()
 			web?.dispose()
 			server.stop()

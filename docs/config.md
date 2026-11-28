@@ -209,13 +209,35 @@ Response modes apply to guild messages. DMs always use `all`.
 
 Guild response mode precedence is:
 
-1. `responses.guilds.{guildId}.channels.{channelId}.mode`
-2. `responses.channels.{channelId}`
+1. `responses.guilds.{guildId}.channels.{channelId}` (string or `mode`)
+2. `responses.channels.{channelId}` (string or `mode`)
 3. `responses.guilds.{guildId}.default`
 4. `responses.default`
 5. `all`
 
 In `mention-or-reply` mode, direct mention pings include the previous 10 channel messages as untrusted context when the previous channel message was not from Catty.
+
+## Response delivery
+
+Response eligibility (`mode`) and delivery are separate settings under `responses`. Delivery defaults to `queue`: each eligible message runs after the current work. To steer an active response instead:
+
+```toml
+[responses]
+default = "mention-or-reply"
+delivery = "queue"
+
+[responses.channels."example-channel-id"]
+mode = "all"
+delivery = "steer"
+```
+
+Both settings independently follow the response scope precedence above. Guilds accept `delivery` alongside `default`; guild-channel objects accept it alongside `mode`. Existing string channel modes and `{mode}` objects still work. Missing delivery defaults to `queue`; an explicit invalid value selects `queue`, not inherited steering. DMs retain `all` response eligibility and can explicitly opt into delivery. Restart after configuration changes.
+
+Only authenticated, response-eligible messages from the **same author, channel, guild and actual session** can steer an active chat. Other messages, idle/compacting sessions and non-chat work keep the ordinary queue. Pi receives input at its supported tool/turn boundary, without cancelling or undoing running tools. Rapid corrections use Pi's existing steering mode, not latest-message-only replacement. The original chat sends one final answer (or suppresses `NO_REPLY`), retaining all accepted files through continuations and final-send processing. Supported extension input transforms and handled inputs use Pi's semantics.
+
+There is no automatic replay. After accepted input hooks and agent work settle, any still-pending SDK inputs are removed with Pi's public `clearQueue()` and reported as unprocessed. Resend needed messages from their original sources. This clears SDK steering/follow-up input, not Catty's external channel/job queue, so subsequent work can proceed. A Discord send failure is reported separately and does not rerun the model.
+
+`/stop` closes admission and calls Pi's abort, but Pi input preflight has no cancellation signal: an already-accepted asynchronous hook can finish later and start a continuation. Catty waits for it before releasing files or replacing the session after compaction failure. Uncooperative hooks can delay completion. Offline real-SDK tests cover these boundaries; they are not live Discord/provider certification.
 
 ## DM logs
 
