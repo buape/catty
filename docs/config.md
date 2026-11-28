@@ -209,49 +209,35 @@ Response modes apply to guild messages. DMs always use `all`.
 
 Guild response mode precedence is:
 
-1. `responses.guilds.{guildId}.channels.{channelId}.mode`
-2. `responses.channels.{channelId}`
+1. `responses.guilds.{guildId}.channels.{channelId}` (string or `mode`)
+2. `responses.channels.{channelId}` (string or `mode`)
 3. `responses.guilds.{guildId}.default`
 4. `responses.default`
 5. `all`
 
 In `mention-or-reply` mode, direct mention pings include the previous 10 channel messages as untrusted context when the previous channel message was not from Catty.
 
-## Message delivery
+## Response delivery
 
-Message delivery controls how an eligible Discord chat message reaches an agent that is already working. It does **not** change authentication, response modes, or session grouping.
-
-The default is `queue`: each accepted message runs after the current queued work. To let follow-on messages guide an active response in one channel:
+Response eligibility (`mode`) and delivery are separate settings under `responses`. Delivery defaults to `queue`: each eligible message runs after the current work. To steer an active response instead:
 
 ```toml
-[messageDelivery]
-default = "queue"
+[responses]
+default = "mention-or-reply"
+delivery = "queue"
 
-[messageDelivery.channels]
-"example-channel-id" = "steer"
+[responses.channels."example-channel-id"]
+mode = "all"
+delivery = "steer"
 ```
 
-Guild-scoped defaults and channel overrides are also supported:
+Both settings independently follow the response scope precedence above. Guilds accept `delivery` alongside `default`; guild-channel objects accept it alongside `mode`. Existing string channel modes and `{mode}` objects still work. Missing delivery defaults to `queue`; an explicit invalid value selects `queue`, not inherited steering. DMs retain `all` response eligibility and can explicitly opt into delivery. Restart after configuration changes.
 
-```toml
-[messageDelivery.guilds."example-guild-id"]
-default = "queue"
+Only authenticated, response-eligible messages from the **same author, channel, guild and actual session** can steer an active chat. Other messages, idle/compacting sessions and non-chat work keep the ordinary queue. Pi receives input at its supported tool/turn boundary, without cancelling or undoing running tools. Rapid corrections use Pi's existing steering mode, not latest-message-only replacement. The original chat sends one final answer (or suppresses `NO_REPLY`), retaining all accepted files through continuations and final-send processing. Supported extension input transforms and handled inputs use Pi's semantics.
 
-[messageDelivery.guilds."example-guild-id".channels]
-"example-channel-id" = "steer"
-```
+There is no automatic replay. After accepted input hooks and agent work settle, any still-pending SDK inputs are removed with Pi's public `clearQueue()` and reported as unprocessed. Resend needed messages from their original sources. This clears SDK steering/follow-up input, not Catty's external channel/job queue, so subsequent work can proceed. A Discord send failure is reported separately and does not rerun the model.
 
-Precedence is guild-channel, global-channel, guild-default, global-default, then `queue`. Only literal `queue` and `steer` values are accepted. A present invalid override selects `queue` rather than inheriting a more permissive value. DMs have no guild override and stay queued unless their channel or the global default explicitly selects steering. Restart Catty after changing configuration.
-
-Steering is eligible only while a chat response is running for the **same author, channel, guild, session object and generation**. An idle/settling/compacting run, another author/channel, or a non-chat job, reaction, command, component or web run uses the ordinary queue instead. Shared session history does not allow one channel to inject input into another channel's response. With separate sessions, unrelated channels retain their existing independent execution.
-
-Pi receives steering at its supported tool/turn boundary. It does not cancel or undo a tool already executing. For example, ask for a short wait followed by APPLE, then send "Actually, say MANGO" during the wait: the current response can incorporate the correction instead of sending a separate queued reply. Multiple follow-ons use the SDK's existing steering mode; this setting does not add debounce or replace earlier messages with only the latest text.
-
-The original chat lifecycle owns the final Discord response, including `NO_REPLY`. Follow-ons retain their author/reply/untrusted-boundary metadata and images, with attachment resources held until the consuming turn and postprocessing finish. They do not create additional final-response subscribers or repeat the final send.
-
-Delivery errors can be partial. The coordinator does not automatically resend ambiguous input. If unconfirmed steering remains in the SDK queue, it quarantines that session and retains the affected attachment resources rather than letting a later channel or job consume them. Further prompts are blocked until the host safely disposes and replaces that session. Inspect the failed turn before resending. Input transformations by extensions that prevent exact consumption tracking also fail closed; throwing input hooks retain the SDK's own error/continue semantics. Uncooperative extension handlers can delay settlement; there is no unsafe timeout-based replay or attachment deletion.
-
-The policy, queue/lifecycle and real-SDK scripted tests cover routing, rapid input, images, delayed preflight, handled/transformed/throwing hooks, cancellation, model errors, automatic compaction, replacement and residual-queue quarantine. Scripted transports, offline summaries and injected failures are not equivalent to exhaustive live provider/gateway failure testing.
+`/stop` closes admission and calls Pi's abort, but Pi input preflight has no cancellation signal: an already-accepted asynchronous hook can finish later and start a continuation. Catty waits for it before releasing files or replacing the session after compaction failure. Uncooperative hooks can delay completion. Offline real-SDK tests cover these boundaries; they are not live Discord/provider certification.
 
 ## DM logs
 

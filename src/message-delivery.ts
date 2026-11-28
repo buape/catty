@@ -1,351 +1,119 @@
-// Per-channel delivery policy and one-owner lifecycle for queued/steered chat.
-export type MessageDeliveryMode = "queue" | "steer"
-export type MessageDeliveryConfig = {
-	default?: unknown
-	channels?: Record<string, unknown>
-	guilds?: Record<
-		string,
-		{
-			default?: unknown
-			channels?: Record<string, unknown>
-		}
-	>
-}
-
-export function resolveMessageDelivery(
-	config: MessageDeliveryConfig | undefined,
-	channelId: string,
-	guildId?: string
-): MessageDeliveryMode {
-	const guild = guildId ? config?.guilds?.[guildId] : undefined
-	const candidates = [
-		guild?.channels?.[channelId],
-		config?.channels?.[channelId],
-		guild?.default,
-		config?.default
-	]
-	for (const candidate of candidates) {
-		if (candidate === undefined) continue
-		// A present but invalid override must not silently inherit steer.
-		return candidate === "steer" ? "steer" : "queue"
-	}
-	return "queue"
-}
-
-export type ActiveChatOrigin = {
-	kind: "chat" | "job" | "web" | "reaction" | "component" | "command"
-	channelId: string
-	guildId?: string
-	authorId: string
-	sessionGeneration: number
-	phase: "running" | "settling" | "ended"
-}
-
-export function eligibleForSteering(input: {
-	mode: MessageDeliveryMode
-	authorized: boolean
-	responds: boolean
-	channelId: string
-	guildId?: string
-	authorId: string
-	sessionGeneration: number
-	active?: ActiveChatOrigin
-}): boolean {
-	const active = input.active
-	return (
-		input.mode === "steer" &&
-		input.authorized &&
-		input.responds &&
-		active?.kind === "chat" &&
-		active.phase === "running" &&
-		active.channelId === input.channelId &&
-		active.guildId === input.guildId &&
-		active.authorId === input.authorId &&
-		active.sessionGeneration === input.sessionGeneration
-	)
-}
-
 import type { AgentSession } from "@earendil-works/pi-coding-agent"
 
-type Session = Pick<
-	AgentSession,
-	"prompt" | "subscribe" | "waitForIdle" | "isStreaming" | "isCompacting"
-> & { pendingMessageCount?: number }
 export type ChatEnvelope = {
-	id: string
 	channelId: string
 	guildId?: string
 	authorId: string
 	text: string
 	images?: NonNullable<Parameters<AgentSession["prompt"]>[1]>["images"]
-	mode: MessageDeliveryMode
+	mode: "queue" | "steer"
 	authorized: boolean
 	responds: boolean
 	cleanup: () => Promise<void> | void
 }
-type Lease = {
-	envelope: ChatEnvelope
-	cleaned: boolean
-	consumed: boolean
-	disposition?: "handled" | "queued" | "started"
-}
-type Turn = {
-	origin: ActiveChatOrigin
+
+type Session = Pick<
+	AgentSession,
+	| "prompt"
+	| "waitForIdle"
+	| "isStreaming"
+	| "isCompacting"
+	| "pendingMessageCount"
+	| "clearQueue"
+>
+export type ActiveChat = {
 	session: Session
-	leases: Lease[]
-	pending: Promise<void>[]
-	errors: unknown[]
-	closing: boolean
-	done: Promise<void>
-	complete: () => void
+	origin: Pick<ChatEnvelope, "channelId" | "guildId" | "authorId">
+	submissions: Promise<PromiseSettledResult<void>>[]
+	cleanups: ChatEnvelope["cleanup"][]
 }
 
-// One response lifecycle owns the original message AND all reserved steering.
-// A follower never subscribes to final answers, posts a final answer, or retries.
-export class ChatDeliveryUncertainError extends Error {}
-
-export class ChatDeliveryCoordinator {
-	private active?: Turn
-	private disposed = false
-	private blockedSession?: Session
-	private quarantined = new Set<Lease>()
-	private leases = new Set<Lease>()
+export class UnprocessedInputError extends Error {
 	constructor(
-		private readonly runtime: {
-			session: () => Session
-			generation: () => number
-			enqueue: (run: () => Promise<void>) => Promise<void>
-			cleanupError?: (error: unknown) => void
-		}
-	) {}
-
-	private async cleanup(lease: Lease, force = false) {
-		if (this.quarantined.has(lease) && !force) return
-		if (lease.cleaned) return
-		lease.cleaned = true
-		this.quarantined.delete(lease)
-		this.leases.delete(lease)
-		try {
-			await lease.envelope.cleanup()
-		} catch (error) {
-			this.runtime.cleanupError?.(error)
-		}
-	}
-
-	async beforePrompt() {
-		if (this.disposed) throw new Error("Chat delivery is shutting down")
-		if (this.blockedSession === this.runtime.session())
-			throw new ChatDeliveryUncertainError(
-				"Session quarantined after uncertain steering. Inspect queued input before replacing this session; no automatic replay."
-			)
-		if (this.blockedSession) {
-			// Host session replacement disposes the old session before exposing the new one.
-			await Promise.all(
-				[...this.quarantined].map((lease) => this.cleanup(lease, true))
-			)
-			this.blockedSession = undefined
-		}
-	}
-
-	async deliver(
-		envelope: ChatEnvelope,
-		runOwner: (settle: () => Promise<void>) => Promise<void>
+		readonly count: number,
+		options?: ErrorOptions
 	) {
-		// Defense in depth: listener must have filtered BEFORE downloading/dispatch.
-		if (!envelope.authorized || !envelope.responds || this.disposed) {
-			await envelope.cleanup()
-			return
+		super(
+			`${count} pending SDK input(s) were not processed and have been removed. Resend needed messages from their original sources; nothing was replayed.`,
+			options
+		)
+	}
+}
+
+// Pi owns execution, input transforms, compaction and aborts. Catty only owns
+// admission to a chat and resources that must survive through its final send.
+export class ChatSteering {
+	private active?: ActiveChat
+
+	open(session: Session, origin: ChatEnvelope): ActiveChat {
+		const chat: ActiveChat = {
+			session,
+			origin,
+			submissions: [],
+			cleanups: [origin.cleanup]
 		}
-		const lease: Lease = { envelope, cleaned: false, consumed: false }
-		this.leases.add(lease)
-		const turn = this.active
-		if (
-			turn &&
-			!turn.closing &&
-			turn.session === this.runtime.session() &&
-			turn.session.isStreaming &&
-			!turn.session.isCompacting &&
-			eligibleForSteering({
-				...envelope,
-				sessionGeneration: this.runtime.generation(),
-				active: turn.origin
-			})
-		) {
-			// Reserve synchronously, before SDK input handlers can yield. The owner
-			// cannot finish/clean resources until every reserved call settles.
-			turn.leases.push(lease)
-			const submission = (async () => {
-				try {
-					await turn.session.prompt(envelope.text, {
-						images: envelope.images,
-						streamingBehavior: "steer",
-						preflightResult: (disposition) => {
-							lease.disposition = disposition
-						}
-					})
-				} catch (error) {
-					// May be partially accepted: NEVER blindly retry as a new prompt.
-					turn.errors.push(error)
-				}
-			})()
-			turn.pending.push(submission)
-			await turn.done
-			return // owner handles any error once; no duplicate follower error reply
-		}
-		try {
-			await this.runtime.enqueue(async () => {
-				await this.beforePrompt()
-				let complete = () => {}
-				const current: Turn = {
-					origin: {
-						kind: "chat",
-						channelId: envelope.channelId,
-						guildId: envelope.guildId,
-						authorId: envelope.authorId,
-						sessionGeneration: this.runtime.generation(),
-						phase: "running"
-					},
-					session: this.runtime.session(),
-					leases: [lease],
-					pending: [],
-					errors: [],
-					closing: false,
-					done: new Promise<void>((resolve) => {
-						complete = resolve
-					}),
-					complete: () => complete()
-				}
-				this.active = current
-				const unsubscribe = current.session.subscribe((event) => {
-					if (
-						event.type === "agent_end" ||
-						event.type === "compaction_start"
-					)
-						current.origin.phase = "settling"
-					if (
-						event.type === "agent_start" &&
-						!current.closing &&
-						current.origin.sessionGeneration ===
-							this.runtime.generation()
-					)
-						current.origin.phase = "running"
-					if (event.type === "compaction_end" && event.errorMessage)
-						current.errors.push(
-							new Error("Steered chat compaction failed")
-						)
-					if (
-						event.type === "message_end" &&
-						event.message.role === "assistant" &&
-						current.leases.length > 1 &&
-						(event.message.stopReason === "aborted" ||
-							event.message.stopReason === "error")
-					)
-						current.errors.push(
-							new Error("Steered chat aborted or model failed")
-						)
-					if (
-						event.type === "message_start" &&
-						event.message.role === "user"
-					) {
-						const text =
-							typeof event.message.content === "string"
-								? event.message.content
-								: event.message.content
-										.filter((part) => part.type === "text")
-										.map((part) => part.text)
-										.join("")
-						for (const item of current.leases)
-							if (item.envelope.text === text)
-								item.consumed = true
-					}
-				})
-				const settle = async () => {
-					current.closing = true
-					current.origin.phase = "settling"
-					await Promise.all(current.pending)
-					await current.session.waitForIdle()
-					if (current.session !== this.runtime.session())
-						throw new ChatDeliveryUncertainError(
-							"Chat session was replaced; inputs must not be replayed automatically"
-						)
-					if (current.errors.length)
-						throw new ChatDeliveryUncertainError(
-							"A steering submission failed or had an uncertain outcome; inspect before resending"
-						)
-					if (
-						current.leases
-							.slice(1)
-							.some(
-								(item) =>
-									item.disposition !== "handled" &&
-									!item.consumed
-							)
-					)
-						throw new ChatDeliveryUncertainError(
-							"Steering was not observed consumed; input was not replayed"
-						)
-				}
-				try {
-					await runOwner(settle)
-				} catch (error) {
-					if (current.leases.length > 1)
-						throw new ChatDeliveryUncertainError(
-							"Steered chat failed; delivery may be partial. Inspect before resending.",
-							{ cause: error }
-						)
-					throw error
-				} finally {
-					current.closing = true
-					current.origin.phase = "ended"
-					// Error/abort paths still wait for in-flight SDK calls before deleting files.
-					try {
-						await Promise.all(current.pending)
-						await current.session.waitForIdle()
-					} finally {
-						unsubscribe()
-						if (
-							(current.session.pendingMessageCount ?? 0) > 0 &&
-							current.leases
-								.slice(1)
-								.some(
-									(item) =>
-										item.disposition !== "handled" &&
-										!item.consumed
-								)
-						) {
-							this.blockedSession = current.session
-							for (const item of current.leases.slice(1))
-								if (
-									item.disposition !== "handled" &&
-									!item.consumed
-								)
-									this.quarantined.add(item)
-						}
-						await Promise.all(
-							current.leases.map((item) => this.cleanup(item))
-						)
-						if (this.active === current) this.active = undefined
-						current.complete()
-					}
-				}
-			})
-		} finally {
-			await this.cleanup(lease)
-		}
+		this.active = chat
+		return chat
 	}
 
-	async dispose() {
-		this.disposed = true
-		if (this.active) {
-			this.active.closing = true
-			this.active.origin.phase = "ended"
-			// Await the owner, including any async SDK input preflight and final
-			// postprocessing. Never delete an accepted input's files prematurely.
-			await this.active.done
-		}
-		// Host MUST abort/wait for the session before disposal (same as shutdown).
-		await Promise.all(
-			[...this.leases].map((lease) => this.cleanup(lease, true))
+	steer(session: Session, input: ChatEnvelope): boolean {
+		const chat = this.active
+		if (
+			!chat ||
+			chat.session !== session ||
+			input.mode !== "steer" ||
+			!input.authorized ||
+			!input.responds ||
+			!session.isStreaming ||
+			session.isCompacting ||
+			chat.origin.channelId !== input.channelId ||
+			chat.origin.guildId !== input.guildId ||
+			chat.origin.authorId !== input.authorId
 		)
+			return false
+
+		// Reserve before async SDK preflight. Rejections are observed immediately;
+		// the owner reports them once, without retrying or a follower final reply.
+		chat.cleanups.push(input.cleanup)
+		chat.submissions.push(
+			session
+				.prompt(input.text, {
+					images: input.images,
+					streamingBehavior: "steer"
+				})
+				.then(
+					() => ({ status: "fulfilled", value: undefined }),
+					(reason: unknown) => ({ status: "rejected", reason })
+				)
+		)
+		return true
+	}
+
+	closeAdmission() {
+		this.active = undefined
+	}
+
+	// Called ONCE by the prompt owner, before host session replacement or final
+	// response processing. A late preflight can start a supported continuation.
+	async settle(chat: ActiveChat) {
+		if (this.active === chat) this.closeAdmission()
+		const results = await Promise.all(chat.submissions)
+		await chat.session.waitForIdle()
+		const errors = results
+			.filter((r) => r.status === "rejected")
+			.map((r) => r.reason)
+		const cause = errors.length
+			? new AggregateError(errors, "Steering input submission failed")
+			: undefined
+		if (chat.session.pendingMessageCount > 0) {
+			// Public SDK recovery contract, only after accepted preflights and runs
+			// settle. Never touch Catty's external queue or replay pending text.
+			const pending = chat.session.clearQueue()
+			throw new UnprocessedInputError(
+				pending.steering.length + pending.followUp.length,
+				{ cause }
+			)
+		}
+		if (cause) throw cause
 	}
 }

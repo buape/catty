@@ -14,7 +14,8 @@ import {
 	SettingsManager
 } from "@earendil-works/pi-coding-agent"
 import { Type } from "typebox"
-import { ChatDeliveryCoordinator, type ChatEnvelope } from "./message-delivery"
+import { type ChatEnvelope, ChatSteering } from "./message-delivery"
+import { createPiQueue } from "./pi-queue"
 
 // Every SDK test uses the REAL locked AgentSession/agent loop, only the model's
 // streaming transport is scripted. Network calls are a test failure, not a fallback.
@@ -46,7 +47,6 @@ const envelope = (
 	cleanup: () => Promise<void> | void,
 	extra: Partial<ChatEnvelope> = {}
 ): ChatEnvelope => ({
-	id,
 	channelId: "channel-a",
 	guildId: "guild-a",
 	authorId: "owner",
@@ -205,28 +205,24 @@ async function fixture(
 		})
 		return stream
 	}
-	let chain: Promise<void> = Promise.resolve(),
-		generation = 0
 	let currentSession = session
-	const observeGeneration = (active: typeof session) =>
-		active.subscribe((event) => {
-			if (event.type === "compaction_start") generation++
-		})
-	observeGeneration(session)
-	const coordinator = new ChatDeliveryCoordinator({
-		session: () => currentSession,
-		generation: () => generation,
-		enqueue: (run) => {
-			const next = chain.then(run)
-			chain = next.catch(() => {})
-			return next
-		}
-	})
+	const steering = new ChatSteering()
+	const enqueue = createPiQueue()
 	const sends: Array<{ channel: string; text: string }> = []
-	const owner = (input: ChatEnvelope) =>
-		coordinator.deliver(input, async (settle) => {
+	let beforeSend: () => Promise<void> = async () => {}
+	let afterSettlement: () => Promise<void> = async () => {}
+	const owner = async (input: ChatEnvelope) => {
+		if (!input.authorized || !input.responds) {
+			await input.cleanup()
+			return
+		}
+		if (steering.steer(currentSession, input)) return
+		return enqueue(async () => {
 			const session = currentSession
+			const chat = steering.open(session, input)
 			let text = ""
+			let modelError: Error | undefined
+			let compactionError: Error | undefined
 			const unsubscribe = session.subscribe((event) => {
 				if (event.type === "agent_end")
 					text = textOf(
@@ -234,19 +230,58 @@ async function fixture(
 							.filter((m) => m.role === "assistant")
 							.at(-1) ?? { content: "" }
 					)
+				if (
+					event.type === "message_end" &&
+					event.message.role === "assistant"
+				)
+					modelError = ["aborted", "error"].includes(
+						event.message.stopReason
+					)
+						? new Error(
+								event.message.errorMessage ??
+									event.message.stopReason
+							)
+						: undefined
+				if (event.type === "compaction_end" && event.errorMessage)
+					compactionError = new Error(event.errorMessage)
 			})
 			try {
-				await session.prompt(
-					input.text,
-					input.images ? { images: input.images } : undefined
-				)
-				await settle()
+				let promptError: unknown
+				try {
+					await session.prompt(
+						input.text,
+						input.images ? { images: input.images } : undefined
+					)
+				} catch (error) {
+					promptError = error
+				}
+				let settlementError: unknown
+				try {
+					await steering.settle(chat)
+				} catch (error) {
+					settlementError = error
+				}
+				await afterSettlement()
+				if (settlementError) {
+					if (
+						settlementError instanceof Error &&
+						(promptError || modelError)
+					)
+						settlementError.cause = promptError ?? modelError
+					throw settlementError
+				}
+				if (promptError) throw promptError
+				if (compactionError) throw compactionError
+				if (modelError) throw modelError
+				await beforeSend()
 				if (text !== "NO_REPLY")
 					sends.push({ channel: input.channelId, text })
 			} finally {
 				unsubscribe()
+				await Promise.all(chat.cleanups.map((cleanup) => cleanup()))
 			}
 		})
+	}
 	return {
 		dir,
 		get session() {
@@ -254,23 +289,25 @@ async function fixture(
 		},
 		replaceWith: (next: typeof session) => {
 			currentSession.dispose()
-			generation++
 			currentSession = next
-			observeGeneration(next)
 		},
-		coordinator,
+		steering,
+		enqueue,
+		beforeSend: (fn: () => Promise<void>) => {
+			beforeSend = fn
+		},
+		afterSettlement: (fn: () => Promise<void>) => {
+			afterSettlement = fn
+		},
 		started,
 		release,
 		contexts,
 		sends,
 		owner,
-		generation: () => {
-			generation++
-		},
 		close: async () => {
 			release.resolve()
 			await session.abort()
-			await coordinator.dispose()
+			await enqueue(async () => {})
 			session.dispose()
 			await rm(dir, { recursive: true, force: true })
 		}
@@ -367,6 +404,7 @@ test("real SDK: different shared channel/author/guild and queue mode use separat
 		{ channelId: "channel-b" },
 		{ authorId: "peer" },
 		{ guildId: "guild-b" },
+		{ guildId: undefined },
 		{ mode: "queue" as const }
 	]) {
 		const f = await fixture()
@@ -385,7 +423,7 @@ test("real SDK: different shared channel/author/guild and queue mode use separat
 	}
 }, 30000)
 
-test("real SDK: denied/filter-ignored messages are not submitted; generation guard queues B", async () => {
+test("real SDK: denied/filter-ignored messages are not submitted", async () => {
 	const f = await fixture()
 	let cleaned = 0
 	try {
@@ -409,12 +447,11 @@ test("real SDK: denied/filter-ignored messages are not submitted; generation gua
 				{ responds: false }
 			)
 		)
-		f.generation()
 		const b = f.owner(envelope("B", () => {}))
 		f.release.resolve()
 		await Promise.all([a, b])
 		expect(cleaned).toBe(2)
-		expect(f.contexts).toHaveLength(3)
+		expect(f.contexts).toHaveLength(2)
 		expect(
 			f.session.messages.filter((m) => m.role === "user").map(textOf)
 		).not.toContain(envelope("denied", () => {}).text)
@@ -678,7 +715,7 @@ test("real SDK: failing auto-compaction rejects coalesced turn then clean sessio
 	}
 }, 15000)
 
-test("real SDK: transforming input is detected as uncertain, not reposted or falsely attributed", async () => {
+test("real SDK: transformed input succeeds normally, without text-equality reconstruction", async () => {
 	const f = await fixture("transformed final", {
 		extension: (pi) => {
 			pi.on("input", (event) =>
@@ -707,15 +744,16 @@ test("real SDK: transforming input is detected as uncertain, not reposted or fal
 		)
 		await Bun.sleep(5)
 		f.release.resolve()
-		expect(await outcome).toBeInstanceOf(Error)
+		expect(await outcome).toBeUndefined()
 		await b
-		expect(f.sends).toHaveLength(0)
+		expect(f.sends).toEqual([
+			{ channel: "channel-a", text: "transformed final" }
+		])
 		expect(cleaned).toBe(2)
 		expect(f.session.pendingMessageCount).toBe(0)
 		expect(
 			f.session.messages.filter((m) => m.role === "user").map(textOf)
 		).toContain("Synthetic transformed input")
-		await f.coordinator.beforePrompt()
 	} finally {
 		await f.close()
 	}
@@ -757,66 +795,340 @@ test("real SDK: throwing input hook follows SDK continue behavior without duplic
 	}
 }, 15000)
 
-test("real SDK: failed next-turn preparation retains actual queued B and quarantines until disposed replacement", async () => {
-	const f = await fixture(),
-		next = await fixture("clean new session")
-	const path = join(f.dir, "retained-B.txt")
-	await writeFile(path, "synthetic")
-	let aClean = 0,
-		bClean = 0,
-		cClean = 0
+test("real SDK: residual queue is explicitly removed, not replayed; external channel/job queue proceeds", async () => {
+	const f = await fixture()
+	let clean = 0
 	try {
 		const a = f.owner(
 				envelope("A", () => {
-					aClean++
+					clean++
 				})
 			),
 			outcome = a.catch((e) => e)
 		await f.started.promise
-		const b = f.owner(
+		await f.owner(
+			envelope("B", () => {
+				clean++
+			})
+		)
+		const original = f.session.agent.prepareNextTurnWithContext
+		// Fault injection into the real loop, not a fake queue count or SDK patch.
+		f.session.agent.prepareNextTurnWithContext = async () => {
+			f.session.agent.prepareNextTurnWithContext = original
+			throw Error("Synthetic pre-turn preparation failure")
+		}
+		let actualPending = 0
+		const clear = f.session.clearQueue.bind(f.session)
+		f.session.clearQueue = () => {
+			actualPending = f.session.pendingMessageCount
+			return clear()
+		}
+		const otherChannel = f.owner(
+			envelope("C", () => {}, { channelId: "other-channel" })
+		)
+		const job = f.enqueue(async () => {
+			await f.session.prompt("synthetic scheduled job")
+		})
+		f.release.resolve()
+		const error = await outcome
+		expect(error.message).toContain("not processed and have been removed")
+		expect(actualPending).toBeGreaterThan(0)
+		expect(f.session.pendingMessageCount).toBe(0)
+		expect(clean).toBe(2)
+		await Promise.all([otherChannel, job])
+		expect(f.sends).toHaveLength(1)
+		const users = f.session.messages
+			.filter((m) => m.role === "user")
+			.map(textOf)
+		expect(users).not.toContain(envelope("B", () => {}).text)
+		expect(users).toContain("synthetic scheduled job")
+	} finally {
+		await f.close()
+	}
+}, 15000)
+
+test("real SDK: files survive delayed final send; admission closes and next chat queues", async () => {
+	const f = await fixture(),
+		sending = gate(),
+		finish = gate()
+	const path = join(f.dir, "reply-image.txt")
+	await writeFile(path, "final image bytes")
+	let cleaned = 0,
+		first = true
+	f.beforeSend(async () => {
+		if (first) {
+			first = false
+			sending.resolve()
+			await finish.promise
+			expect(await readFile(path, "utf8")).toBe("final image bytes")
+		}
+	})
+	try {
+		const a = f.owner(
+			envelope("A", () => {
+				cleaned++
+			})
+		)
+		await f.started.promise
+		await f.owner(
 			envelope("B", async () => {
-				bClean++
+				cleaned++
 				await rm(path)
 			})
 		)
-		await Bun.sleep(5)
-		// Public agent fault-injection hook, not a mocked AgentSession or fake queue count.
-		f.session.agent.prepareNextTurnWithContext = async () => {
-			throw Error("Synthetic pre-turn preparation failure")
-		}
 		f.release.resolve()
-		expect(await outcome).toBeInstanceOf(Error)
-		await b
-		expect(f.session.pendingMessageCount).toBeGreaterThan(0)
-		expect(aClean).toBe(1)
-		expect(bClean).toBe(0)
-		expect(await readFile(path, "utf8")).toBe("synthetic")
-		const blocked = await f.coordinator.beforePrompt().catch((e) => e)
-		expect(blocked.message).toContain("quarantined")
-		const rejected = await f
-			.owner(
-				envelope("C", () => {
-					cClean++
-				})
-			)
-			.catch((e) => e)
-		expect(rejected.message).toContain("quarantined")
-		expect(cClean).toBe(1)
-		f.replaceWith(next.session)
-		next.release.resolve()
-		await f.owner(envelope("D", () => {}))
-		expect(bClean).toBe(1)
-		expect(await readFile(path, "utf8").catch(() => "removed")).toBe(
-			"removed"
+		await sending.promise
+		expect(cleaned).toBe(0)
+		const c = f.owner(
+			envelope("C", () => {
+				cleaned++
+			})
 		)
+		expect(f.contexts).toHaveLength(2)
+		finish.resolve()
+		await Promise.all([a, c])
+		expect(f.sends).toHaveLength(2)
+		expect(cleaned).toBe(3)
+		expect(await readFile(path).catch(() => "removed")).toBe("removed")
+	} finally {
+		finish.resolve()
+		await f.close()
+	}
+}, 15000)
+
+test("real SDK: Discord send failure preserves its cause, cleans files and never replays model input", async () => {
+	const f = await fixture(),
+		failure = new Error("Synthetic Discord transport failure")
+	let cleaned = 0
+	f.beforeSend(async () => {
+		throw failure
+	})
+	try {
+		const a = f.owner(
+				envelope("A", () => {
+					cleaned++
+				})
+			),
+			outcome = a.catch((e) => e)
+		await f.started.promise
+		await f.owner(
+			envelope("B", () => {
+				cleaned++
+			})
+		)
+		f.release.resolve()
+		expect(await outcome).toBe(failure)
+		expect(f.session.pendingMessageCount).toBe(0)
+		expect(f.contexts).toHaveLength(2)
+		expect(f.sends).toHaveLength(0)
+		expect(cleaned).toBe(2)
+		f.beforeSend(async () => {})
+		await f.owner(envelope("C", () => {}, { channelId: "other-channel" }))
+		expect(f.contexts).toHaveLength(3)
+		expect(f.sends).toHaveLength(1)
+		expect(
+			f.session.messages.filter(
+				(m) =>
+					m.role === "user" &&
+					textOf(m) === envelope("B", () => {}).text
+			)
+		).toHaveLength(1)
+	} finally {
+		await f.close()
+	}
+}, 15000)
+
+test("real SDK: stop cannot cancel an accepted asynchronous input hook; late continuation retains files", async () => {
+	const entered = gate(),
+		allow = gate()
+	let clean = 0
+	const f = await fixture("late answer after stop", {
+		extension: (pi) => {
+			pi.on("input", async (event) => {
+				if (event.text.includes("user_message_B>")) {
+					entered.resolve()
+					await allow.promise
+				}
+				return { action: "continue" }
+			})
+		}
+	})
+	try {
+		const a = f.owner(
+				envelope("A", () => {
+					clean++
+				})
+			),
+			outcome = a.catch((e) => e)
+		await f.started.promise
+		await f.owner(
+			envelope("B", () => {
+				clean++
+			})
+		)
+		await entered.promise
+		// Same production /stop admission boundary. SDK abort has no input-hook signal.
+		f.steering.closeAdmission()
+		const abort = f.session.abort()
+		f.release.resolve()
+		await abort
+		expect(clean).toBe(0)
+		expect(f.sends).toHaveLength(0)
+		allow.resolve()
+		expect(await outcome).toBeUndefined()
+		expect(f.sends).toEqual([
+			{ channel: "channel-a", text: "late answer after stop" }
+		])
+		expect(clean).toBe(2)
+		expect(f.session.pendingMessageCount).toBe(0)
+	} finally {
+		allow.resolve()
+		await f.close()
+	}
+}, 15000)
+
+test("real SDK: compaction recovery waits for late preflight before replacing the actual session", async () => {
+	const entered = gate(),
+		allow = gate(),
+		compacted = gate()
+	let clean = 0,
+		replaced = false
+	const f = await fixture("old continuation", {
+		autoCompaction: true,
+		extension: (pi) => {
+			pi.on("input", async (event) => {
+				if (event.text.includes("user_message_B>")) {
+					entered.resolve()
+					await allow.promise
+				}
+				return { action: "continue" }
+			})
+			pi.on("session_before_compact", (event) => ({
+				compaction: {
+					get summary(): string {
+						throw Error("Synthetic compaction failure")
+					},
+					firstKeptEntryId: event.preparation.firstKeptEntryId,
+					tokensBefore: event.preparation.tokensBefore
+				}
+			}))
+		}
+	})
+	const next = await fixture("replacement answer")
+	const old = f.session
+	old.subscribe((event) => {
+		if (event.type === "compaction_end" && event.errorMessage)
+			compacted.resolve()
+	})
+	f.afterSettlement(async () => {
+		expect(old.isStreaming).toBe(false)
+		expect(old.pendingMessageCount).toBe(0)
+		expect(clean).toBe(0)
+		f.replaceWith(next.session)
+		replaced = true
+		f.afterSettlement(async () => {})
+	})
+	try {
+		const a = f.owner(
+				envelope("A", () => {
+					clean++
+				})
+			),
+			outcome = a.catch((e) => e)
+		await f.started.promise
+		await f.owner(
+			envelope("B", () => {
+				clean++
+			})
+		)
+		await entered.promise
+		f.release.resolve()
+		await compacted.promise
+		expect(replaced).toBe(false)
+		expect(clean).toBe(0)
+		allow.resolve()
+		const result = await outcome
+		expect(result).toBeInstanceOf(Error)
+		expect(replaced).toBe(true)
+		expect(clean).toBe(2)
+		next.release.resolve()
+		await f.owner(envelope("C", () => {}, { channelId: "other-channel" }))
 		expect(
 			next.session.messages.filter((m) => m.role === "user").map(textOf)
-		).toEqual([envelope("D", () => {}).text])
+		).toEqual([envelope("C", () => {}).text])
 		expect(f.sends).toEqual([
-			{ channel: "channel-a", text: "clean new session" }
+			{ channel: "other-channel", text: "replacement answer" }
 		])
+	} finally {
+		allow.resolve()
+		await f.close()
+		await next.close()
+	}
+}, 15000)
+
+test("real SDK: actual-session identity guard rejects steering into a replacement", async () => {
+	const f = await fixture(),
+		next = await fixture()
+	let cleaned = 0
+	try {
+		const a = f.owner(
+			envelope("A", () => {
+				cleaned++
+			})
+		)
+		await f.started.promise
+		expect(
+			f.steering.steer(
+				next.session,
+				envelope("B", () => {
+					cleaned++
+				})
+			)
+		).toBe(false)
+		expect(next.session.messages).toHaveLength(0)
+		f.release.resolve()
+		await a
+		expect(f.sends).toHaveLength(1)
+		expect(cleaned).toBe(1)
 	} finally {
 		await f.close()
 		await next.close()
+	}
+}, 15000)
+
+test("real SDK: rejected steering submission preserves the original cause and reports once", async () => {
+	const f = await fixture(),
+		failure = new Error("Synthetic input submission failure")
+	let cleaned = 0
+	try {
+		const a = f.owner(
+				envelope("A", () => {
+					cleaned++
+				})
+			),
+			outcome = a.catch((e) => e)
+		await f.started.promise
+		const prompt = f.session.prompt.bind(f.session)
+		// Inject a submission rejection; all other inputs still use the real SDK.
+		f.session.prompt = async (text, options) => {
+			if (text === envelope("B", () => {}).text) throw failure
+			await prompt(text, options)
+		}
+		await f.owner(
+			envelope("B", () => {
+				cleaned++
+			})
+		)
+		f.release.resolve()
+		const error = await outcome
+		expect(error).toBeInstanceOf(AggregateError)
+		expect(error.errors).toEqual([failure])
+		expect(cleaned).toBe(2)
+		expect(f.sends).toHaveLength(0)
+		expect(f.session.pendingMessageCount).toBe(0)
+		await f.owner(envelope("C", () => {}, { channelId: "other-channel" }))
+		expect(f.sends).toHaveLength(1)
+	} finally {
+		await f.close()
 	}
 }, 15000)

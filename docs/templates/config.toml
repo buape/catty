@@ -61,6 +61,8 @@ verbose = false
 [responses]
 # Default guild mode: all, mention-or-reply, or prefix. Default: all.
 # default = "all"
+# Delivery is independent of response eligibility. Default: queue.
+# delivery = "queue"
 # Prefix used when mode is prefix. Default: !catty.
 # prefix = "!catty"
 
@@ -68,14 +70,20 @@ verbose = false
 # [responses.channels]
 # Channel IDs map to: all, mention-or-reply, or prefix.
 # channel-id = "mention-or-reply"
+# Or use an object to opt a channel into same-author tool-boundary steering:
+# [responses.channels."example-channel-id"]
+# mode = "mention-or-reply"
+# delivery = "steer"
 
 # Guild-scoped response behavior.
 # [responses.guilds."guild-id"]
 # default = "mention-or-reply"
+# delivery = "queue"
 
 # Channel-scoped response behavior inside a guild.
 # [responses.guilds."guild-id".channels."channel-id"]
 # mode = "mention-or-reply"
+# delivery = "steer"
 
 # Direct message logging.
 [dmLogs]
@@ -113,16 +121,3 @@ verbose = false
 
 # DO NOT CHANGE THIS VALUE
 version = 7
-
-# Message delivery is independent of auth, responses and session grouping.
-# Absent/invalid values keep queue. Explicit steer still requires an eligible
-# active chat in the exact same channel/guild/session generation AND same author.
-# Steering happens at a tool/turn boundary, not cancellation of running tools.
-# [messageDelivery]
-# default = "queue"
-# [messageDelivery.channels]
-# "example-channel-id" = "steer"
-# [messageDelivery.guilds."example-guild-id"]
-# default = "queue"
-# [messageDelivery.guilds."example-guild-id".channels]
-# "example-channel-id" = "steer"
