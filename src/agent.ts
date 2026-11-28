@@ -53,6 +53,12 @@ import {
 } from "./discord-message"
 import { createJobsController, migrateHeartbeatToJob } from "./jobs"
 import { createReactionListeners } from "./listeners/reactions"
+import {
+	ChatDeliveryCoordinator,
+	ChatDeliveryUncertainError,
+	resolveMessageDelivery
+} from "./message-delivery"
+import { createPiQueue } from "./pi-queue"
 import { cattySystemPrompt } from "./prompt"
 import { resolveDiscordSession } from "./sessions"
 import { createDiscordTool } from "./tools/discord"
@@ -334,56 +340,10 @@ export async function startCatty(options?: { newSession?: boolean }) {
 		return { session, modelFallbackMessage }
 	}
 
-	const createPiQueue = () => {
-		const piJobs: Array<{
-			run: () => Promise<void>
-			lowPriority: boolean
-			resolve: () => void
-			reject: (error: unknown) => void
-		}> = []
-		let piRunning = false
-		const runPiJobs = async () => {
-			if (piRunning) return
-			piRunning = true
-			try {
-				while (piJobs.length > 0) {
-					const normalIndex = piJobs.findIndex(
-						(job) => !job.lowPriority
-					)
-					const [job] = piJobs.splice(
-						normalIndex === -1 ? 0 : normalIndex,
-						1
-					)
-					if (!job) continue
-					try {
-						await job.run()
-						job.resolve()
-					} catch (error) {
-						job.reject(error)
-					}
-				}
-			} finally {
-				piRunning = false
-			}
-		}
-		return (
-			run: () => Promise<void>,
-			options?: { lowPriority?: boolean }
-		) =>
-			new Promise<void>((resolve, reject) => {
-				const lowPriority = options?.lowPriority === true
-				piJobs.push({
-					run,
-					lowPriority,
-					resolve,
-					reject
-				})
-				if (lowPriority) setTimeout(() => void runPiJobs(), 1500)
-				else void runPiJobs()
-			})
-	}
 	type PiRuntime = {
 		label: string
+		generation: number
+		delivery: ChatDeliveryCoordinator
 		session: AgentSession
 		enqueuePi: ReturnType<typeof createPiQueue>
 		restartSession: () => Promise<AgentSession>
@@ -440,10 +400,19 @@ export async function startCatty(options?: { newSession?: boolean }) {
 	}) => {
 		const runtime: PiRuntime = {
 			label,
+			generation: 0,
+			delivery: new ChatDeliveryCoordinator({
+				session: () => runtime.session,
+				generation: () => runtime.generation,
+				enqueue: (run) => runtime.enqueuePi(run),
+				cleanupError: (error) =>
+					console.error("[discord] delivery cleanup failed", error)
+			}),
 			session,
 			enqueuePi,
 			restartSession,
 			promptSession: async (text, promptOptions) => {
+				await runtime.delivery.beforePrompt()
 				let compactionFailure = ""
 				let contextOverflow = ""
 				let overflowCompacted = false
@@ -505,7 +474,9 @@ export async function startCatty(options?: { newSession?: boolean }) {
 					)
 					const nextSession = await runtime.restartSession()
 					activeSession.dispose()
+					runtime.generation++
 					runtime.session = nextSession
+					observeGeneration(nextSession)
 					console.log(
 						`[pi:${runtime.label}] restarted session: ${runtime.session.sessionFile ?? runtime.session.sessionId}`
 					)
@@ -518,6 +489,11 @@ export async function startCatty(options?: { newSession?: boolean }) {
 				if (promptError) throw promptError
 			}
 		}
+		const observeGeneration = (observed: AgentSession) =>
+			observed.subscribe((event) => {
+				if (event.type === "compaction_start") runtime.generation++
+			})
+		observeGeneration(session)
 		return runtime
 	}
 
@@ -949,6 +925,7 @@ ${content}
 
 			const runtime = await getDiscordPiRuntime(channelId, guildId)
 			try {
+				runtime.generation++
 				await runtime.session.abort()
 				console.log("[discord] /stop aborted session for", channelId)
 				await interaction.reply("Stopped.")
@@ -1188,123 +1165,169 @@ ${content || "[no text content]"}
 			console.log("[pi] prompt queued for message", data.message.id)
 			console.log(`[pi] exact prompt:\n---\n${piPrompt}\n---`)
 
-			const runtime = await getDiscordPiRuntime(
-				data.message.channelId,
-				guildId
-			)
-			const job = runtime.enqueuePi(async () => {
-				console.log("[pi] prompt started", data.message.id)
-				let text = ""
-				const unsubscribe = runtime.session.subscribe((event) => {
-					if (event.type === "agent_end")
-						text = finalAssistantText(event.messages)
-				})
-
-				try {
-					await runtime.promptSession(
-						piPrompt,
-						images.length > 0 ? { images } : undefined
-					)
-				} finally {
-					unsubscribe()
-					stopTyping()
-					if (attachmentTempDir)
-						await rm(attachmentTempDir, {
-							recursive: true,
-							force: true
-						})
-				}
-
-				const response = text.trim() || "No text response."
-				console.log("[pi] final response for message", data.message.id)
-				console.log(
-					`[pi] response:\n---\n${response.slice(0, 500)}\n---`
+			let resourcesCleaned = false
+			const cleanup = async () => {
+				if (resourcesCleaned) return
+				resourcesCleaned = true
+				stopTyping()
+				if (attachmentTempDir)
+					await rm(attachmentTempDir, {
+						recursive: true,
+						force: true
+					})
+			}
+			let runtime: PiRuntime
+			try {
+				runtime = await getDiscordPiRuntime(
+					data.message.channelId,
+					guildId
 				)
-				if (response === "NO_REPLY") {
+			} catch (error) {
+				await cleanup()
+				console.error(
+					"[discord] chat runtime initialization failed",
+					error
+				)
+				await data.message.reply(
+					"Catty could not prepare this chat session. Check service logs."
+				)
+				return
+			}
+			const job = runtime.delivery.deliver(
+				{
+					id: data.message.id,
+					channelId: data.message.channelId,
+					guildId,
+					authorId: data.author.id,
+					mode: resolveMessageDelivery(
+						config.messageDelivery,
+						data.message.channelId,
+						guildId
+					),
+					authorized: allowed,
+					responds: true,
+					text: piPrompt,
+					images,
+					cleanup
+				},
+				async (settle) => {
+					console.log("[pi] prompt started", data.message.id)
+					let text = ""
+					const unsubscribe = runtime.session.subscribe((event) => {
+						if (event.type === "agent_end")
+							text = finalAssistantText(event.messages)
+					})
+
+					try {
+						await runtime.promptSession(
+							piPrompt,
+							images.length > 0 ? { images } : undefined
+						)
+						await settle()
+					} finally {
+						unsubscribe()
+					}
+
+					const response = text.trim() || "No text response."
 					console.log(
-						"[discord] suppressed NO_REPLY",
+						"[pi] final response for message",
 						data.message.id
 					)
-					if (logDm)
-						await sendDmLog(
-							`**Catty DM response**\nTo: ${data.author.username ?? "unknown"} (${data.author.id})\nDM channel: ${data.message.channelId}\nMessage: ${data.message.id}\n\n[NO_REPLY]`
-						)
-					return
-				}
-
-				if (
-					await sendDiscordComponentResponse(
-						data.message.channelId,
-						response
+					console.log(
+						`[pi] response:\n---\n${response.slice(0, 500)}\n---`
 					)
-				) {
-					if (logDm)
-						await sendDmLog(
-							`**Catty DM response**\nTo: ${data.author.username ?? "unknown"} (${data.author.id})\nDM channel: ${data.message.channelId}\nMessage: ${data.message.id}\n\n[component view]`
+					if (response === "NO_REPLY") {
+						console.log(
+							"[discord] suppressed NO_REPLY",
+							data.message.id
 						)
-					return
-				}
-
-				// Extract image markers: [IMAGE: /path/to/file.png]
-				const imageMarkerRegex = /\[IMAGE:\s*([^\]]+)\]/g
-				const imagePaths: string[] = []
-				const cleanText =
-					response
-						.replace(imageMarkerRegex, (_, p1) => {
-							imagePaths.push(p1.trim())
-							return ""
-						})
-						.trim() || "No text response."
-
-				const files: { name: string; data: Blob }[] = []
-				for (const imgPath of imagePaths) {
-					try {
-						const { readFile } = await import("node:fs/promises")
-						const fileBuffer = await readFile(imgPath.trim())
-						const filename = imgPath.split("/").pop() || "image.png"
-						files.push({
-							name: filename,
-							data: new Blob([fileBuffer])
-						})
-					} catch (error) {
-						console.error(
-							"[discord] failed to read image",
-							imgPath,
-							error
-						)
+						if (logDm)
+							await sendDmLog(
+								`**Catty DM response**\nTo: ${data.author.username ?? "unknown"} (${data.author.id})\nDM channel: ${data.message.channelId}\nMessage: ${data.message.id}\n\n[NO_REPLY]`
+							)
+						return
 					}
-				}
 
-				const chunks = splitDiscordContent(cleanText)
-				const channel = await data.message.fetchChannel()
-				const payload =
-					files.length > 0 ? { content: chunks[0], files } : chunks[0]
-				if (!channel?.isSendable()) {
-					await data.message.reply(payload)
-					for (const chunk of chunks.slice(1))
-						await data.message.reply(chunk)
-				} else {
-					await channel.send(payload)
-					for (const chunk of chunks.slice(1))
-						await channel.send(chunk)
+					if (
+						await sendDiscordComponentResponse(
+							data.message.channelId,
+							response
+						)
+					) {
+						if (logDm)
+							await sendDmLog(
+								`**Catty DM response**\nTo: ${data.author.username ?? "unknown"} (${data.author.id})\nDM channel: ${data.message.channelId}\nMessage: ${data.message.id}\n\n[component view]`
+							)
+						return
+					}
+
+					// Extract image markers: [IMAGE: /path/to/file.png]
+					const imageMarkerRegex = /\[IMAGE:\s*([^\]]+)\]/g
+					const imagePaths: string[] = []
+					const cleanText =
+						response
+							.replace(imageMarkerRegex, (_, p1) => {
+								imagePaths.push(p1.trim())
+								return ""
+							})
+							.trim() || "No text response."
+
+					const files: { name: string; data: Blob }[] = []
+					for (const imgPath of imagePaths) {
+						try {
+							const { readFile } = await import(
+								"node:fs/promises"
+							)
+							const fileBuffer = await readFile(imgPath.trim())
+							const filename =
+								imgPath.split("/").pop() || "image.png"
+							files.push({
+								name: filename,
+								data: new Blob([fileBuffer])
+							})
+						} catch (error) {
+							console.error(
+								"[discord] failed to read image",
+								imgPath,
+								error
+							)
+						}
+					}
+
+					const chunks = splitDiscordContent(cleanText)
+					const channel = await data.message.fetchChannel()
+					const payload =
+						files.length > 0
+							? { content: chunks[0], files }
+							: chunks[0]
+					if (!channel?.isSendable()) {
+						await data.message.reply(payload)
+						for (const chunk of chunks.slice(1))
+							await data.message.reply(chunk)
+					} else {
+						await channel.send(payload)
+						for (const chunk of chunks.slice(1))
+							await channel.send(chunk)
+					}
+					if (logDm)
+						await sendDmLog(
+							`**Catty DM response**\nTo: ${data.author.username ?? "unknown"} (${data.author.id})\nDM channel: ${data.message.channelId}\nMessage: ${data.message.id}\n\n${cleanText}${
+								imagePaths.length
+									? `\n\nFiles:\n${imagePaths.map((path) => `- ${path}`).join("\n")}`
+									: ""
+							}`
+						)
 				}
-				if (logDm)
-					await sendDmLog(
-						`**Catty DM response**\nTo: ${data.author.username ?? "unknown"} (${data.author.id})\nDM channel: ${data.message.channelId}\nMessage: ${data.message.id}\n\n${cleanText}${
-							imagePaths.length
-								? `\n\nFiles:\n${imagePaths.map((path) => `- ${path}`).join("\n")}`
-								: ""
-						}`
-					)
-			})
+			)
 
 			await job.catch(async (error) => {
 				console.error("[pi] error for message", data.message.id, error)
-				stopTyping()
 				const response =
-					error instanceof AutoCompactionFailedError
-						? "Catty restarted its pi session after auto-compaction failed. Please resend your message."
-						: "Catty hit an error. Check service logs."
+					error instanceof ChatDeliveryUncertainError
+						? "This steered turn failed and delivery may be partial. I have not replayed the inputs. Inspect this turn before resending."
+						: error instanceof AutoCompactionFailedError
+							? "Catty restarted its pi session after auto-compaction failed. Please resend your message."
+							: "Catty hit an error. Check service logs."
 				await data.message.reply(response)
 				if (logDm)
 					await sendDmLog(
@@ -1540,11 +1563,17 @@ ${JSON.stringify(trigger, null, 2)}
 		process.on(signal, async () => {
 			jobs.dispose()
 			gateway.disconnect()
-			for (const runtime of discordPiRuntimes.values())
-				(await runtime).session.dispose()
+			for (const runtime of discordPiRuntimes.values()) {
+				const current = await runtime
+				await current.session.abort()
+				await current.delivery.dispose()
+				current.session.dispose()
+			}
 			if (voicePiRuntime) (await voicePiRuntime).session.dispose()
 			if (separateJobsRuntime)
 				(await separateJobsRuntime).session.dispose()
+			await mainRuntime.session.abort()
+			await mainRuntime.delivery.dispose()
 			mainRuntime.session.dispose()
 			web?.dispose()
 			server.stop()
